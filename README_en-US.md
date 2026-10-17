@@ -36,4 +36,4 @@ This repository is licensed under the [MIT License](./LICENSE).
 
 All videos are collected from the internet, and each one is credited with its specific source. If any content infringes your rights, please contact us for removal.
 
-See [catalog.json](./catalog/catalog.json) for the full source catalog.
+See [manifest.json](./video/manifest.json) for the full source catalog.

@@ -36,4 +36,4 @@ Copyright &copy; 2026 WencueCryforme
 
 所有视频均来源于互联网,并标注了具体来源,如有侵权请联系删除。
 
-来源目录详见 [catalog.json](./catalog/catalog.json) 。
+来源目录详见 [manifest.json](./video/manifest.json) 。
