@@ -123,6 +123,7 @@ const upstreams = ref<Set<string>>(
       .map(entry => entry.filename)
   )
 )
+let lastHomeClickAt = 0
 const shuffledEntries = ref<CatalogEntry[]>([])
 let scrollFrame = 0
 
@@ -176,6 +177,15 @@ async function resetFeed() {
 
 async function handleTab(tab: 'home' | 'topics') {
   if (tab === 'home') {
+    const now = Date.now()
+    if (now - lastHomeClickAt <= 200) {
+      lastHomeClickAt = 0
+      if (import.meta.client) {
+        window.location.reload()
+      }
+      return
+    }
+    lastHomeClickAt = now
     topicBubbleOpen.value = false
     setTopics([])
     view.value = 'home'
@@ -183,6 +193,7 @@ async function handleTab(tab: 'home' | 'topics') {
     return
   }
 
+  lastHomeClickAt = 0
   if (view.value === 'search') {
     view.value = 'home'
   }
@@ -214,6 +225,7 @@ function clearTopics() {
 }
 
 function openDrawer() {
+  lastHomeClickAt = 0
   if (topicBubbleOpen.value) {
     applyTopics()
   }
@@ -221,6 +233,7 @@ function openDrawer() {
 }
 
 async function openSearch() {
+  lastHomeClickAt = 0
   if (topicBubbleOpen.value) {
     applyTopics()
   }

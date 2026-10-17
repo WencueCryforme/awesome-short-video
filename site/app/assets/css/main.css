@@ -17,7 +17,7 @@
   --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-@media (min-width: 760px) and (pointer: fine) {
+@media (min-width: 760px) and (hover: hover) and (pointer: fine) {
   :root {
     --ui-width: min(100vw, 56.25dvh);
   }
@@ -313,7 +313,7 @@ svg {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   background: transparent;
   z-index: 1;
 }
@@ -801,7 +801,7 @@ html[data-theme="light"] .feed-empty__button {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: var(--ui-width);
+  width: 100%;
   height: 100%;
   margin: 0 auto;
   overflow: hidden;
@@ -853,6 +853,7 @@ html[data-theme="light"] .feed-empty__button {
 
 .nav-tab {
   position: relative;
+  touch-action: manipulation;
   padding: 6px 0;
   border: 0;
   background: transparent;
@@ -1545,8 +1546,7 @@ html[data-theme="light"] .result-card__cover {
   z-index: 1;
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 9 / 16;
+  height: 100%;
   border: 0;
   background: #000000;
   transform: translateX(-50%);
@@ -1638,17 +1638,31 @@ iframe {
   background: transparent;
 }
 
+.topic-measure {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  display: flex;
+  gap: 6px;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.topic-measure .topic-chip {
+  font-weight: 600;
+}
+
 .topic-bubble {
   position: fixed;
   top: calc(var(--nav-height) + 10px);
   left: 50%;
   z-index: 36;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   gap: 6px;
-  width: min(calc(var(--ui-width) - 24px), 420px);
+  width: max-content;
+  max-width: calc(var(--ui-width) - 24px);
   max-height: 60vh;
   overflow-y: auto;
   padding: 10px;
@@ -1658,7 +1672,19 @@ iframe {
   color: var(--panel-text);
   box-shadow: var(--shadow-lg);
   transform: translateX(-50%);
+  visibility: hidden;
   scrollbar-width: none;
+}
+
+.topic-bubble.is-ready {
+  visibility: visible;
+}
+
+.topic-row {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 6px;
 }
 
 .topic-bubble::-webkit-scrollbar {
@@ -1753,4 +1779,15 @@ html[data-theme="light"] .topic-chip.is-selected {
 .search-detail-back svg {
   width: 20px;
   height: 20px;
+}
+
+@media (min-width: 760px) and (hover: hover) and (pointer: fine) {
+  .app-view {
+    width: var(--ui-width);
+  }
+
+  .feed-slide__frame {
+    height: auto;
+    aspect-ratio: 9 / 16;
+  }
 }
