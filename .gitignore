@@ -1,5 +1,30 @@
 # Agent Runtime
 AGENTS.md
+.agent/
+.agents/
+temp/
 
-# THE_FILE_SIZE_IS_TOO_LARGE
-THE_FILE_SIZE_IS_TOO_LARGE/
+# Version documents
+v*-*.md
+[0-9][0-9].[0-9][0-9].[0-9][0-9]-*.md
+
+# Video files too large for git
+video/THE_FILE_SIZE_IS_TOO_LARGE/
+
+# Node.js
+node_modules/
+.nuxt/
+.output/
+.nitro/
+.cache/
+dist/
+*.log
+.env
+
+# Script temporary files
+*.temp.json
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
