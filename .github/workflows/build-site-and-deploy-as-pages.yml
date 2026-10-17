@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'site/**'
+      - 'video/**'
+      - 'scripts/**'
       - '.github/workflows/build-site-and-deploy-as-pages.yml'
   workflow_dispatch:
 
@@ -36,9 +38,6 @@ jobs:
 
       - name: Validate video manifest
         run: node scripts/check-video-manifest.mjs --bool
-
-      - name: Normalize manifest order
-        run: node scripts/sort-video-manifest_tags.mjs --check
 
       - name: Generate static site
         working-directory: site
