@@ -1,0 +1,11 @@
+{
+  "name": "awesome-short-video",
+  "version": "26.10.18",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/tests/check-video-manifest.test.mjs && node scripts/tests/sort-video-manifest_tags.test.mjs",
+    "check:manifest": "node scripts/check-video-manifest.mjs",
+    "sort:manifest": "node scripts/sort-video-manifest_tags.mjs"
+  }
+}

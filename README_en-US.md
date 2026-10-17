@@ -2,7 +2,7 @@
 
 # awesome-short-video
 
-[![Version](https://img.shields.io/badge/Version-26.10.17-00ee66)](https://github.com/WencueCryforme/awesome-short-video/tree/main)
+[![Version](https://img.shields.io/badge/Version-26.10.18-00ee66)](https://github.com/WencueCryforme/awesome-short-video/tree/main)
 [![Copyright](https://img.shields.io/badge/Copyright-WencueCryforme-ff8888)](./COPYRIGHT)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
 
