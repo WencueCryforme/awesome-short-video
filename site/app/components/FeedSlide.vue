@@ -19,24 +19,24 @@
       allowfullscreen
     ></iframe>
 
-    <template v-else-if="!isLocked && !isUpstream">
+    <template v-else-if="!isLocked">
       <video
-        v-if="shouldLoad"
+        v-if="shouldLoad || preloadCover"
         ref="videoEl"
         class="feed-slide__video"
-        :src="videoUrl"
+        :src="videoUrl + '#t=0.1'"
         :muted="muted"
         playsinline
         webkit-playsinline
         loop
-        preload="none"
+        :preload="active ? 'auto' : preloadCover ? 'metadata' : 'none'"
         @click.stop="togglePlay"
         @timeupdate="onTimeUpdate"
         @play="onPlay"
         @pause="onPause"
       ></video>
       <button
-        v-if="active && isPaused"
+        v-if="active && isPaused && !clearMode"
         type="button"
         class="feed-slide__play"
         aria-label="播放视频"
@@ -54,9 +54,9 @@
     <div v-if="uiHidden" class="feed-slide__edge feed-slide__edge--left" aria-hidden="true"></div>
     <div v-if="uiHidden" class="feed-slide__edge feed-slide__edge--right" aria-hidden="true"></div>
 
-    <div v-if="!uiHidden" class="feed-slide__shade" aria-hidden="true"></div>
+    <div v-if="!hideChrome" class="feed-slide__shade" aria-hidden="true"></div>
 
-    <aside v-if="!uiHidden" class="feed-rail" aria-label="视频操作">
+    <aside v-if="!hideChrome" class="feed-rail" aria-label="视频操作">
       <button
         v-if="!isLocked"
         type="button"
@@ -73,6 +73,20 @@
           <path d="M15.5 8.6a5 5 0 0 1 0 6.8M18 6.2a8.6 8.6 0 0 1 0 11.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
         </svg>
         <span>{{ muted ? '静音' : '声音' }}</span>
+      </button>
+
+      <button
+        v-if="active"
+        type="button"
+        class="rail-button"
+        :title="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
+        :aria-label="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
+        @click.stop="emit('toggleUpstream')"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7 7h8l-2.5-2.5M17 17H9l2.5 2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+        </svg>
+        <span>{{ isUpstream ? '站内源' : '换源' }}</span>
       </button>
 
       <a
@@ -96,29 +110,29 @@
         </svg>
         <span>复制</span>
       </button>
+
+      <button
+        v-if="active && !isLocked && !isUpstream"
+        type="button"
+        class="rail-button"
+        aria-label="清屏"
+        @click.stop="enterClearMode"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 3l18 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+          <path d="M10.6 6.2A10 10 0 0 1 19.5 12a10.3 10.3 0 0 1-4.2 4.7M6.2 7.2A10.2 10.2 0 0 0 4.5 12a10 10 0 0 0 12 5.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+        </svg>
+        <span>清屏</span>
+      </button>
     </aside>
 
-    <div v-if="!uiHidden" class="feed-slide__info">
+    <div v-if="!hideChrome" class="feed-slide__info">
       <h2 class="feed-slide__title">{{ entry.title }}</h2>
       <p class="feed-slide__desc">{{ entry.desc }}</p>
       <div class="feed-slide__tags">
         <span v-for="tag in entry.tags" :key="tag" class="feed-tag"># {{ tag }}</span>
       </div>
     </div>
-
-    <button
-      v-if="active"
-      type="button"
-      class="feed-switch"
-      :class="{ 'is-on': isUpstream }"
-      :title="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
-      :aria-label="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
-      @click.stop="emit('toggleUpstream')"
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M7 7h8l-2.5-2.5M17 17H9l2.5 2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-      </svg>
-    </button>
 
     <div
       v-if="active && !isLocked && !isUpstream"
@@ -153,6 +167,7 @@ const props = defineProps<{
   index: number
   active: boolean
   shouldLoad: boolean
+  preloadCover: boolean
   muted: boolean
   upstream: boolean
 }>()
@@ -166,7 +181,10 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const progressEl = ref<HTMLDivElement | null>(null)
 const isPaused = ref(true)
 const isSeeking = ref(false)
+const clearMode = ref(false)
 const progress = ref(0)
+let lastToggleAt = 0
+const CLICK_COOLDOWN_MS = 300
 const resolveVideoUrl = useVideoUrl()
 const videoUrl = resolveVideoUrl(props.entry.filename)
 const { push } = useToast()
@@ -176,6 +194,7 @@ const embed = computed(() => resolveEmbed(props.entry))
 const canSwitch = computed(() => embed.value !== null)
 const isUpstream = computed(() => props.upstream && canSwitch.value)
 const uiHidden = computed(() => isUpstream.value && props.active)
+const hideChrome = computed(() => uiHidden.value || clearMode.value)
 
 async function play() {
   const element = videoEl.value
@@ -200,11 +219,20 @@ function togglePlay() {
   if (!element) {
     return
   }
+  const now = Date.now()
+  if (now - lastToggleAt < CLICK_COOLDOWN_MS) {
+    return
+  }
+  lastToggleAt = now
   if (element.paused) {
     play()
   } else {
     element.pause()
   }
+}
+
+function enterClearMode() {
+  clearMode.value = true
 }
 
 function onPlay() {
@@ -238,6 +266,7 @@ function seekToClientX(clientX: number) {
 }
 
 function onSeekStart(event: PointerEvent) {
+  clearMode.value = false
   isSeeking.value = true
   const target = event.currentTarget as HTMLElement
   target.setPointerCapture(event.pointerId)
@@ -260,6 +289,7 @@ function onSeekEnd(event: PointerEvent) {
 }
 
 function seekBy(seconds: number) {
+  clearMode.value = false
   const element = videoEl.value
   if (!element || !Number.isFinite(element.duration)) {
     return
@@ -279,6 +309,9 @@ async function copySource() {
 watch(
   () => [props.active, props.shouldLoad, isUpstream.value],
   async () => {
+    if (!props.active || isUpstream.value) {
+      clearMode.value = false
+    }
     if (props.active && props.shouldLoad && !isUpstream.value) {
       await nextTick()
       play()

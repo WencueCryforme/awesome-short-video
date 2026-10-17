@@ -17,6 +17,7 @@
             :index="index"
             :active="index === activeIndex"
             :should-load="Math.abs(index - activeIndex) <= 1"
+            :preload-cover="index > activeIndex && index <= activeIndex + 2"
             :muted="muted"
             :upstream="upstreams.has(entry.filename)"
             @toggle-mute="muted = !muted"

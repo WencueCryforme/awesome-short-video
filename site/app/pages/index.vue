@@ -18,6 +18,7 @@
             :index="index"
             :active="index === activeSlide"
             :should-load="Math.abs(index - activeIndex) <= 1"
+            :preload-cover="index > activeIndex && index <= activeIndex + 2"
             :muted="muted"
             :upstream="upstreams.has(entry.filename)"
             @toggle-mute="toggleMute"
@@ -124,6 +125,7 @@ const upstreams = ref<Set<string>>(
   )
 )
 let lastHomeClickAt = 0
+const HOME_DOUBLE_CLICK_MS = 400
 const shuffledEntries = ref<CatalogEntry[]>([])
 let scrollFrame = 0
 
@@ -178,7 +180,7 @@ async function resetFeed() {
 async function handleTab(tab: 'home' | 'topics') {
   if (tab === 'home') {
     const now = Date.now()
-    if (now - lastHomeClickAt <= 200) {
+    if (now - lastHomeClickAt <= HOME_DOUBLE_CLICK_MS) {
       lastHomeClickAt = 0
       if (import.meta.client) {
         window.location.reload()
