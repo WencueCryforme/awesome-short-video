@@ -3,6 +3,7 @@
     class="feed-slide"
     :class="{ 'feed-slide--locked': isLocked, 'feed-slide--upstream': uiHidden }"
     :data-index="index"
+    @dblclick.stop="onSlideDoubleClick"
   >
     <div class="feed-slide__poster" aria-hidden="true"></div>
 
@@ -24,13 +25,13 @@
         v-if="shouldLoad || preloadCover"
         ref="videoEl"
         class="feed-slide__video"
-        :src="videoUrl + '#t=0.1'"
+        :src="videoUrl + VIDEO_COVER_FRAGMENT"
         :muted="muted"
         playsinline
         webkit-playsinline
         loop
         :preload="active ? 'auto' : preloadCover ? 'metadata' : 'none'"
-        @click.stop="togglePlay"
+        @click.stop="onVideoClick"
         @timeupdate="onTimeUpdate"
         @play="onPlay"
         @pause="onPause"
@@ -75,20 +76,6 @@
         <span>{{ muted ? '静音' : '声音' }}</span>
       </button>
 
-      <button
-        v-if="active"
-        type="button"
-        class="rail-button"
-        :title="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
-        :aria-label="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
-        @click.stop="emit('toggleUpstream')"
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M7 7h8l-2.5-2.5M17 17H9l2.5 2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-        </svg>
-        <span>{{ isUpstream ? '站内源' : '换源' }}</span>
-      </button>
-
       <a
         class="rail-button"
         :href="entry.source"
@@ -108,7 +95,21 @@
           <path d="M10 14a4 4 0 0 1 0-5.6l3-3a4 4 0 1 1 5.6 5.6l-1.3 1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
           <path d="M14 10a4 4 0 0 1 0 5.6l-3 3A4 4 0 1 1 5.4 13l1.3-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
         </svg>
-        <span>复制</span>
+        <span>链接</span>
+      </button>
+
+      <button
+        v-if="active"
+        type="button"
+        class="rail-button"
+        :title="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
+        :aria-label="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
+        @click.stop="emit('toggleUpstream')"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+        </svg>
+        <span>{{ isUpstream ? '站内源' : '换源' }}</span>
       </button>
 
       <button
@@ -116,7 +117,7 @@
         type="button"
         class="rail-button"
         aria-label="清屏"
-        @click.stop="enterClearMode"
+        @click.stop="emit('clearScreen')"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 3l18 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
@@ -125,6 +126,21 @@
         <span>清屏</span>
       </button>
     </aside>
+
+    <button
+      v-if="active && isUpstream"
+      type="button"
+      class="rail-button feed-float-switch"
+      title="切换为站内源"
+      aria-label="切换为站内源"
+      @click.stop="emit('toggleUpstream')"
+      @dblclick.stop
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 8h13M14 5l3 3-3 3M20 16H7M10 13l-3 3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+      </svg>
+      <span>站内源</span>
+    </button>
 
     <div v-if="!hideChrome" class="feed-slide__info">
       <h2 class="feed-slide__title">{{ entry.title }}</h2>
@@ -160,7 +176,7 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { resolveEmbed } from '~/utils/embed'
-import { SITE as site } from '~/utils/site'
+import { INTERACTION, SITE as site, VIDEO_COVER_FRAGMENT } from '~/const'
 
 const props = defineProps<{
   entry: CatalogEntry
@@ -170,21 +186,24 @@ const props = defineProps<{
   preloadCover: boolean
   muted: boolean
   upstream: boolean
+  clearMode: boolean
 }>()
 
 const emit = defineEmits<{
   toggleMute: []
   toggleUpstream: []
+  clearScreen: []
+  exitClearScreen: []
 }>()
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const progressEl = ref<HTMLDivElement | null>(null)
 const isPaused = ref(true)
 const isSeeking = ref(false)
-const clearMode = ref(false)
 const progress = ref(0)
 let lastToggleAt = 0
-const CLICK_COOLDOWN_MS = 300
+let lastVideoClickAt = 0
+let videoClickTimer: ReturnType<typeof setTimeout> | null = null
 const resolveVideoUrl = useVideoUrl()
 const videoUrl = resolveVideoUrl(props.entry.filename)
 const { push } = useToast()
@@ -194,7 +213,7 @@ const embed = computed(() => resolveEmbed(props.entry))
 const canSwitch = computed(() => embed.value !== null)
 const isUpstream = computed(() => props.upstream && canSwitch.value)
 const uiHidden = computed(() => isUpstream.value && props.active)
-const hideChrome = computed(() => uiHidden.value || clearMode.value)
+const hideChrome = computed(() => uiHidden.value || props.clearMode)
 
 async function play() {
   const element = videoEl.value
@@ -220,7 +239,7 @@ function togglePlay() {
     return
   }
   const now = Date.now()
-  if (now - lastToggleAt < CLICK_COOLDOWN_MS) {
+  if (now - lastToggleAt < INTERACTION.videoClickCooldownMs) {
     return
   }
   lastToggleAt = now
@@ -231,8 +250,45 @@ function togglePlay() {
   }
 }
 
-function enterClearMode() {
-  clearMode.value = true
+function exitClearMode() {
+  if (props.clearMode) {
+    emit('exitClearScreen')
+  }
+}
+
+function cancelPendingClick() {
+  if (videoClickTimer) {
+    clearTimeout(videoClickTimer)
+    videoClickTimer = null
+  }
+}
+
+function onVideoClick() {
+  const now = Date.now()
+  if (now - lastVideoClickAt <= INTERACTION.videoDoubleClickMs) {
+    cancelPendingClick()
+    lastVideoClickAt = 0
+    exitClearMode()
+    return
+  }
+  if (now - lastToggleAt < INTERACTION.videoClickCooldownMs) {
+    return
+  }
+  cancelPendingClick()
+  lastVideoClickAt = now
+  videoClickTimer = setTimeout(() => {
+    videoClickTimer = null
+    lastVideoClickAt = 0
+    if (props.active) {
+      togglePlay()
+    }
+  }, INTERACTION.videoDoubleClickMs)
+}
+
+function onSlideDoubleClick() {
+  cancelPendingClick()
+  lastVideoClickAt = 0
+  exitClearMode()
 }
 
 function onPlay() {
@@ -266,7 +322,9 @@ function seekToClientX(clientX: number) {
 }
 
 function onSeekStart(event: PointerEvent) {
-  clearMode.value = false
+  cancelPendingClick()
+  lastVideoClickAt = 0
+  emit('exitClearScreen')
   isSeeking.value = true
   const target = event.currentTarget as HTMLElement
   target.setPointerCapture(event.pointerId)
@@ -289,7 +347,9 @@ function onSeekEnd(event: PointerEvent) {
 }
 
 function seekBy(seconds: number) {
-  clearMode.value = false
+  cancelPendingClick()
+  lastVideoClickAt = 0
+  emit('exitClearScreen')
   const element = videoEl.value
   if (!element || !Number.isFinite(element.duration)) {
     return
@@ -310,7 +370,8 @@ watch(
   () => [props.active, props.shouldLoad, isUpstream.value],
   async () => {
     if (!props.active || isUpstream.value) {
-      clearMode.value = false
+      cancelPendingClick()
+      lastVideoClickAt = 0
     }
     if (props.active && props.shouldLoad && !isUpstream.value) {
       await nextTick()
@@ -337,6 +398,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  cancelPendingClick()
   pause()
 })
 

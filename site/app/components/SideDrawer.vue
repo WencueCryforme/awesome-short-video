@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { SITE as site } from '~/utils/site'
+import { SITE as site } from '~/const'
 
 defineProps<{
   open: boolean

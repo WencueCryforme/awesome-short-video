@@ -1,3 +1,4 @@
+import { EMBED } from '~/const'
 import type { CatalogEntry } from '~/types/catalog'
 
 export interface EmbedSource {
@@ -29,7 +30,7 @@ export function resolveEmbed(entry: CatalogEntry): EmbedSource | null {
     }
     return {
       provider: 'douyin',
-      src: 'https://open.douyin.com/player/video?vid=' + encodeURIComponent(entry.source_id) + '&autoplay=0'
+      src: EMBED.douyinPlayerUrl + '?vid=' + encodeURIComponent(entry.source_id) + '&autoplay=' + EMBED.douyinAutoplay
     }
   }
 

@@ -20,8 +20,11 @@
             :preload-cover="index > activeIndex && index <= activeIndex + 2"
             :muted="muted"
             :upstream="upstreams.has(entry.filename)"
+            :clear-mode="clearMode"
             @toggle-mute="muted = !muted"
             @toggle-upstream="toggleUpstream(entry)"
+            @clear-screen="clearMode = true"
+            @exit-clear-screen="clearMode = false"
           />
         </div>
       </div>
@@ -51,6 +54,7 @@ const scrollEl = ref<HTMLElement | null>(null)
 const slideRefs = ref<Array<SlideHandle | null>>([])
 const activeIndex = ref(props.startIndex)
 const muted = ref(true)
+const clearMode = ref(false)
 const upstreams = ref<Set<string>>(
   new Set(
     props.entries

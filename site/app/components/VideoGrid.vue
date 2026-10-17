@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
-import { SITE as site } from '~/utils/site'
+import { SITE as site, VIDEO_COVER_FRAGMENT } from '~/const'
 
 defineProps<{
   entries: CatalogEntry[]
@@ -48,5 +48,5 @@ const emit = defineEmits<{
 }>()
 
 const resolveVideoUrl = useVideoUrl()
-const coverUrl = (filename: string) => resolveVideoUrl(filename) + '#t=0.1'
+const coverUrl = (filename: string) => resolveVideoUrl(filename) + VIDEO_COVER_FRAGMENT
 </script>

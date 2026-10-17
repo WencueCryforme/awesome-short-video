@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { SITE } from './app/utils/site'
+import { DEFAULT_THEME, SITE } from './app/const'
 
 const siteRoot = dirname(fileURLToPath(import.meta.url))
 const projectRoot = resolve(siteRoot, '..')
@@ -34,7 +34,7 @@ export default defineNuxtConfig({
         {
           key: 'theme-init',
           tagPosition: 'head',
-          innerHTML: "(function(){try{var key='" + SITE.themeStorageKey + "';var stored=localStorage.getItem(key);var theme=stored==='light'||stored==='dark'?stored:'light';document.documentElement.setAttribute('data-theme',theme)}catch(error){document.documentElement.setAttribute('data-theme','light')}})()"
+          innerHTML: "(function(){try{var key='" + SITE.themeStorageKey + "';var stored=localStorage.getItem(key);var theme=stored==='light'||stored==='dark'?stored:'" + DEFAULT_THEME + "';document.documentElement.setAttribute('data-theme',theme)}catch(error){document.documentElement.setAttribute('data-theme','" + DEFAULT_THEME + "')}})()"
         }
       ]
     }

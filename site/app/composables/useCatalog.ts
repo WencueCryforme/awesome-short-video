@@ -1,5 +1,5 @@
 import type { CatalogEntry, CatalogManifest } from '~/types/catalog'
-import { SITE } from '~/utils/site'
+import { SITE } from '~/const'
 
 interface CatalogView {
   entries: CatalogEntry[]

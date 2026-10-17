@@ -21,8 +21,11 @@
             :preload-cover="index > activeIndex && index <= activeIndex + 2"
             :muted="muted"
             :upstream="upstreams.has(entry.filename)"
+            :clear-mode="clearMode"
             @toggle-mute="toggleMute"
             @toggle-upstream="toggleUpstream(entry)"
+            @clear-screen="clearMode = true"
+            @exit-clear-screen="clearMode = false"
           />
         </div>
       </div>
@@ -86,7 +89,7 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { canEmbed } from '~/utils/embed'
-import { SITE as site } from '~/utils/site'
+import { INTERACTION, SITE as site } from '~/const'
 
 type ViewName = 'home' | 'search'
 
@@ -124,8 +127,10 @@ const upstreams = ref<Set<string>>(
       .map(entry => entry.filename)
   )
 )
+const clearMode = ref(false)
 let lastHomeClickAt = 0
-const HOME_DOUBLE_CLICK_MS = 400
+let lastTopicClickAt = 0
+let topicClickTimer: ReturnType<typeof setTimeout> | null = null
 const shuffledEntries = ref<CatalogEntry[]>([])
 let scrollFrame = 0
 
@@ -177,10 +182,63 @@ async function resetFeed() {
   scrollEl.value?.scrollTo({ top: 0 })
 }
 
+function cancelTopicClick() {
+  if (topicClickTimer) {
+    clearTimeout(topicClickTimer)
+    topicClickTimer = null
+  }
+}
+
+function performTopicTabToggle() {
+  lastHomeClickAt = 0
+  if (view.value === 'search') {
+    view.value = 'home'
+  }
+  if (topicBubbleOpen.value) {
+    applyTopics()
+    return
+  }
+  draftTopics.value = [...selectedTopics.value]
+  topicBubbleOpen.value = true
+}
+
+async function handleTopicDoubleClick() {
+  cancelTopicClick()
+  lastTopicClickAt = 0
+  lastHomeClickAt = 0
+  if (topicBubbleOpen.value) {
+    setTopics(draftTopics.value)
+  }
+  topicBubbleOpen.value = false
+  view.value = 'home'
+  shuffledEntries.value = shuffleEntries(entries)
+  await resetFeed()
+}
+
+function handleTopicClick() {
+  lastHomeClickAt = 0
+  const now = Date.now()
+  if (now - lastTopicClickAt <= INTERACTION.topicDoubleClickMs) {
+    lastTopicClickAt = 0
+    cancelTopicClick()
+    handleTopicDoubleClick()
+    return
+  }
+  lastTopicClickAt = now
+  cancelTopicClick()
+  topicClickTimer = setTimeout(() => {
+    topicClickTimer = null
+    lastTopicClickAt = 0
+    performTopicTabToggle()
+  }, INTERACTION.topicDoubleClickMs)
+}
+
 async function handleTab(tab: 'home' | 'topics') {
   if (tab === 'home') {
+    cancelTopicClick()
+    lastTopicClickAt = 0
     const now = Date.now()
-    if (now - lastHomeClickAt <= HOME_DOUBLE_CLICK_MS) {
+    if (now - lastHomeClickAt <= INTERACTION.homeDoubleClickMs) {
       lastHomeClickAt = 0
       if (import.meta.client) {
         window.location.reload()
@@ -196,15 +254,7 @@ async function handleTab(tab: 'home' | 'topics') {
   }
 
   lastHomeClickAt = 0
-  if (view.value === 'search') {
-    view.value = 'home'
-  }
-  if (topicBubbleOpen.value) {
-    applyTopics()
-    return
-  }
-  draftTopics.value = [...selectedTopics.value]
-  topicBubbleOpen.value = true
+  handleTopicClick()
 }
 
 function toggleDraftTopic(tag: string) {
@@ -228,6 +278,8 @@ function clearTopics() {
 
 function openDrawer() {
   lastHomeClickAt = 0
+  cancelTopicClick()
+  lastTopicClickAt = 0
   if (topicBubbleOpen.value) {
     applyTopics()
   }
@@ -236,6 +288,8 @@ function openDrawer() {
 
 async function openSearch() {
   lastHomeClickAt = 0
+  cancelTopicClick()
+  lastTopicClickAt = 0
   if (topicBubbleOpen.value) {
     applyTopics()
   }
@@ -391,6 +445,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  cancelTopicClick()
   window.removeEventListener('keydown', handleKeydown)
   if (scrollFrame) {
     cancelAnimationFrame(scrollFrame)

@@ -1,3 +1,5 @@
+import { TOAST } from '~/const'
+
 export interface ToastItem {
   id: number
   message: string
@@ -15,10 +17,10 @@ export function useToast() {
 
   function push(message: string, tone: ToastItem['tone'] = 'info') {
     const id = ++nextId
-    /* 只保留一条气泡,新气泡立即替换旧气泡 */
-    const next = [...items.value, { id, message, tone }].slice(-1)
+    /* 按配置保留气泡数量,超出后立即移除旧气泡 */
+    const next = [...items.value, { id, message, tone }].slice(-TOAST.maxCount)
     items.value = next
-    setTimeout(() => dismiss(id), 2000)
+    setTimeout(() => dismiss(id), TOAST.durationMs)
   }
 
   return { items, push, dismiss }

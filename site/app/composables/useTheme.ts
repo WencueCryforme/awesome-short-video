@@ -1,10 +1,10 @@
-import { SITE } from '~/utils/site'
+import { DEFAULT_THEME, SITE } from '~/const'
 
 export type ThemeName = 'dark' | 'light'
 
 /* 主题偏好写入 localStorage,首屏由 nuxt.config 中的内联脚本提前应用 */
 export function useTheme() {
-  const theme = useState<ThemeName>('site-theme', () => 'light')
+  const theme = useState<ThemeName>('site-theme', () => DEFAULT_THEME)
   const config = useRuntimeConfig()
   const rawBase = (config.app.baseURL as string) || '/'
   const base = rawBase.endsWith('/') ? rawBase : rawBase + '/'
