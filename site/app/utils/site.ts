@@ -2,7 +2,7 @@
 export const SITE = {
   title: 'awesome-short-video',
   subtitle: '个人短视频流',
-  description: '个人版抖音式竖屏短视频流,上下滑动浏览,支持标签筛选与来源跳转',
+  description: '个人版抖音式竖屏短视频流,上下滑动浏览,支持话题与搜索',
   author: {
     name: 'WencueCryforme',
     url: 'https://github.com/WencueCryforme'

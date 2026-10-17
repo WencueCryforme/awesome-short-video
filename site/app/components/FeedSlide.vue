@@ -1,7 +1,25 @@
 <template>
-  <section class="feed-slide" :class="{ 'feed-slide--locked': isLocked }" :data-index="index">
-    <template v-if="!isLocked">
-      <div class="feed-slide__poster" aria-hidden="true"></div>
+  <section
+    class="feed-slide"
+    :class="{ 'feed-slide--locked': isLocked, 'feed-slide--upstream': uiHidden }"
+    :data-index="index"
+  >
+    <div class="feed-slide__poster" aria-hidden="true"></div>
+
+    <iframe
+      v-if="isUpstream && active"
+      class="feed-slide__frame"
+      width="100%"
+      :src="embed?.src"
+      title="上游视频"
+      loading="lazy"
+      referrerpolicy="unsafe-url"
+      scrolling="no"
+      allow="autoplay; encrypted-media; picture-in-picture"
+      allowfullscreen
+    ></iframe>
+
+    <template v-else-if="!isLocked && !isUpstream">
       <video
         v-if="shouldLoad"
         ref="videoEl"
@@ -28,15 +46,17 @@
       </button>
     </template>
 
-    <div v-else class="feed-slide__locked">
+    <div v-else-if="!isUpstream" class="feed-slide__locked">
       <span class="locked-badge">体积过大</span>
-      <p class="locked-note">文件未入库,请前往来源观看</p>
-      <a class="locked-link" :href="entry.source" target="_blank" rel="noopener noreferrer">前往来源</a>
+      <p class="locked-note">{{ canSwitch ? '请切换上游源' : '该视频无上游源' }}</p>
     </div>
 
-    <div class="feed-slide__shade" aria-hidden="true"></div>
+    <div v-if="uiHidden" class="feed-slide__edge feed-slide__edge--left" aria-hidden="true"></div>
+    <div v-if="uiHidden" class="feed-slide__edge feed-slide__edge--right" aria-hidden="true"></div>
 
-    <aside class="feed-rail" aria-label="视频操作">
+    <div v-if="!uiHidden" class="feed-slide__shade" aria-hidden="true"></div>
+
+    <aside v-if="!uiHidden" class="feed-rail" aria-label="视频操作">
       <button
         v-if="!isLocked"
         type="button"
@@ -78,8 +98,7 @@
       </button>
     </aside>
 
-    <div class="feed-slide__info">
-      <p class="feed-slide__author">@{{ site.author.name }}</p>
+    <div v-if="!uiHidden" class="feed-slide__info">
       <h2 class="feed-slide__title">{{ entry.title }}</h2>
       <p class="feed-slide__desc">{{ entry.desc }}</p>
       <div class="feed-slide__tags">
@@ -87,14 +106,46 @@
       </div>
     </div>
 
-    <div v-if="active && !isLocked" class="feed-slide__progress" aria-hidden="true">
-      <span :style="{ width: progress + '%' }"></span>
+    <button
+      v-if="active"
+      type="button"
+      class="feed-switch"
+      :class="{ 'is-on': isUpstream }"
+      :title="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
+      :aria-label="canSwitch ? (isUpstream ? '切换为站内源' : '切换为上游源') : '无上游源'"
+      @click.stop="emit('toggleUpstream')"
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 7h8l-2.5-2.5M17 17H9l2.5 2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+      </svg>
+    </button>
+
+    <div
+      v-if="active && !isLocked && !isUpstream"
+      ref="progressEl"
+      class="feed-slide__progress"
+      role="slider"
+      tabindex="0"
+      :aria-valuemin="0"
+      :aria-valuemax="100"
+      :aria-valuenow="Math.round(progress)"
+      aria-label="播放进度"
+      @pointerdown="onSeekStart"
+      @pointermove="onSeekMove"
+      @pointerup="onSeekEnd"
+      @pointercancel="onSeekEnd"
+      @keydown.left.prevent.stop="seekBy(-5)"
+      @keydown.right.prevent.stop="seekBy(5)"
+    >
+      <span class="feed-slide__progress-fill" :style="{ width: progress + '%' }"></span>
+      <span class="feed-slide__progress-thumb" :style="{ left: progress + '%' }"></span>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
+import { resolveEmbed } from '~/utils/embed'
 import { SITE as site } from '~/utils/site'
 
 const props = defineProps<{
@@ -103,20 +154,28 @@ const props = defineProps<{
   active: boolean
   shouldLoad: boolean
   muted: boolean
+  upstream: boolean
 }>()
 
 const emit = defineEmits<{
   toggleMute: []
+  toggleUpstream: []
 }>()
 
 const videoEl = ref<HTMLVideoElement | null>(null)
+const progressEl = ref<HTMLDivElement | null>(null)
 const isPaused = ref(true)
+const isSeeking = ref(false)
 const progress = ref(0)
 const resolveVideoUrl = useVideoUrl()
 const videoUrl = resolveVideoUrl(props.entry.filename)
 const { push } = useToast()
 
 const isLocked = computed(() => props.entry.flag === site.tooLargeFlag)
+const embed = computed(() => resolveEmbed(props.entry))
+const canSwitch = computed(() => embed.value !== null)
+const isUpstream = computed(() => props.upstream && canSwitch.value)
+const uiHidden = computed(() => isUpstream.value && props.active)
 
 async function play() {
   const element = videoEl.value
@@ -157,10 +216,55 @@ function onPause() {
 }
 
 function onTimeUpdate() {
+  if (isSeeking.value) {
+    return
+  }
   const element = videoEl.value
   if (element && element.duration > 0) {
     progress.value = (element.currentTime / element.duration) * 100
   }
+}
+
+function seekToClientX(clientX: number) {
+  const bar = progressEl.value
+  const element = videoEl.value
+  if (!bar || !element || !Number.isFinite(element.duration) || element.duration <= 0) {
+    return
+  }
+  const rect = bar.getBoundingClientRect()
+  const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
+  element.currentTime = ratio * element.duration
+  progress.value = ratio * 100
+}
+
+function onSeekStart(event: PointerEvent) {
+  isSeeking.value = true
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  seekToClientX(event.clientX)
+}
+
+function onSeekMove(event: PointerEvent) {
+  if (!isSeeking.value) {
+    return
+  }
+  seekToClientX(event.clientX)
+}
+
+function onSeekEnd(event: PointerEvent) {
+  isSeeking.value = false
+  const target = event.currentTarget as HTMLElement
+  if (target.hasPointerCapture(event.pointerId)) {
+    target.releasePointerCapture(event.pointerId)
+  }
+}
+
+function seekBy(seconds: number) {
+  const element = videoEl.value
+  if (!element || !Number.isFinite(element.duration)) {
+    return
+  }
+  element.currentTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration)
 }
 
 async function copySource() {
@@ -173,9 +277,9 @@ async function copySource() {
 }
 
 watch(
-  () => [props.active, props.shouldLoad],
+  () => [props.active, props.shouldLoad, isUpstream.value],
   async () => {
-    if (props.active && props.shouldLoad) {
+    if (props.active && props.shouldLoad && !isUpstream.value) {
       await nextTick()
       play()
     } else {
@@ -187,14 +291,14 @@ watch(
 watch(
   () => props.muted,
   (muted) => {
-    if (!muted && props.active) {
+    if (!muted && props.active && !isUpstream.value) {
       play()
     }
   }
 )
 
 onMounted(() => {
-  if (props.active && props.shouldLoad) {
+  if (props.active && props.shouldLoad && !isUpstream.value) {
     play()
   }
 })

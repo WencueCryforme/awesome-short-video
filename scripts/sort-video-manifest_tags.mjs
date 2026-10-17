@@ -77,7 +77,7 @@ async function sortDocuments(manifestPath, tagsPath) {
   const nextManifest = { ...manifestDocument.value, total: sortedTotal }
 
   await writeJsonDocument(tagsPath, sortedTags, tagsDocument.style)
-  await writeJsonDocument(manifestPath, nextManifest, manifestDocument.style)
+  await writeJsonDocument(manifestPath, nextManifest, manifestDocument.style, { inlineTags: true })
 
   return {
     tagCount: sortedTags.length,

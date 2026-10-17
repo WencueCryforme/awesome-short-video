@@ -5,6 +5,9 @@ export interface CatalogEntry {
   desc: string
   filename: string
   source: string
+  source_id?: string
+  allow_iframe?: boolean
+  default_mod?: 'onsite' | 'upstream'
   tags: string[]
   flag?: TooLargeFlag
 }

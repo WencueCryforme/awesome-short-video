@@ -130,6 +130,48 @@ test('同时传 --manifest 与 --tags 时不解析清单内标签路径', async 
   assert.equal(result.stdout.trim(), 'true')
 })
 
+test('source_id 为空时失败', async () => {
+  const fixture = await createFixture({
+    manifest: makeManifest([makeEntry({ filename: 'a.mp4', source_id: '' })]),
+    tags: ['爱'],
+    files: ['a.mp4']
+  })
+
+  const result = runScript('check-video-manifest.mjs', [
+    '--bool', '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
+  ])
+
+  assert.equal(result.stdout.trim(), 'false')
+})
+
+test('allow_iframe 非布尔值时失败', async () => {
+  const fixture = await createFixture({
+    manifest: makeManifest([makeEntry({ filename: 'a.mp4', allow_iframe: 'yes' })]),
+    tags: ['爱'],
+    files: ['a.mp4']
+  })
+
+  const result = runScript('check-video-manifest.mjs', [
+    '--bool', '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
+  ])
+
+  assert.equal(result.stdout.trim(), 'false')
+})
+
+test('default_mod 取值非法时失败', async () => {
+  const fixture = await createFixture({
+    manifest: makeManifest([makeEntry({ filename: 'a.mp4', default_mod: 'cloud' })]),
+    tags: ['爱'],
+    files: ['a.mp4']
+  })
+
+  const result = runScript('check-video-manifest.mjs', [
+    '--bool', '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
+  ])
+
+  assert.equal(result.stdout.trim(), 'false')
+})
+
 test('未知选项输出 false 并给出调试信息', async () => {
   const result = runScript('check-video-manifest.mjs', ['--unknown'])
   const lines = result.stdout.trim().split(/\r?\n/)

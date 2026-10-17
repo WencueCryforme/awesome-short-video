@@ -11,9 +11,7 @@
 
 </div>
 
-My personal Douyin-style short-video feed, built as a pure front-end site.
-
-Swipe vertically to browse. The current video plays automatically, with tag filtering and source links.
+My curated collection of short videos.
 
 ---
 

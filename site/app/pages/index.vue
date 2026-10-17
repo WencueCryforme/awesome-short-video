@@ -1,132 +1,290 @@
 <template>
-  <div class="feed-layout">
-    <div class="feed-shell">
-    <header class="feed-top">
-      <div class="feed-brand">
-        <span class="feed-brand__mark" aria-hidden="true">
-          <span class="feed-brand__triangle"></span>
-        </span>
-        <div>
-          <p class="feed-brand__name">{{ site.title }}</p>
-          <p class="feed-brand__sub">@{{ site.author.name }}</p>
+  <div class="app-view">
+    <TopNav
+      :active="activeTab"
+      @menu="openDrawer"
+      @select="handleTab"
+      @search="openSearch"
+    />
+
+    <div v-if="view === 'home'" class="feed-layout">
+      <div class="feed-shell">
+        <div ref="scrollEl" class="feed-scroll" @scroll.passive="onScroll">
+          <FeedSlide
+            v-for="(entry, index) in feedEntries"
+            :key="entry.filename"
+            :ref="(element) => setSlideRef(element, index)"
+            :entry="entry"
+            :index="index"
+            :active="index === activeSlide"
+            :should-load="Math.abs(index - activeIndex) <= 1"
+            :muted="muted"
+            :upstream="upstreams.has(entry.filename)"
+            @toggle-mute="toggleMute"
+            @toggle-upstream="toggleUpstream(entry)"
+          />
         </div>
       </div>
-      <div class="feed-top__actions">
-        <ThemeToggle />
-        <a
-          class="icon-button"
-          :href="site.repositoryUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="打开源码仓库"
-          title="打开源码仓库"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M9 8l-4 4 4 4M15 8l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-          </svg>
-        </a>
+
+      <div v-if="!feedEntries.length" class="feed-empty">
+        <p class="feed-empty__title">当前话题下没有视频</p>
+        <button type="button" class="feed-empty__button" @click="clearTopics">查看全部</button>
       </div>
-    </header>
-
-    <nav class="feed-tabs" aria-label="标签筛选">
-      <button
-        type="button"
-        class="feed-tab"
-        :class="{ 'is-active': !activeTag }"
-        @click="selectTag(null)"
-      >
-        全部
-      </button>
-      <button
-        v-for="tag in presetTags"
-        :key="tag"
-        type="button"
-        class="feed-tab"
-        :class="{ 'is-active': activeTag === tag }"
-        @click="selectTag(tag)"
-      >
-        {{ tag }}
-      </button>
-    </nav>
-
-    <div ref="scrollEl" class="feed-scroll" @scroll.passive="onScroll">
-      <FeedSlide
-        v-for="(entry, index) in filtered"
-        :key="entry.filename"
-        :ref="(element) => setSlideRef(element, index)"
-        :entry="entry"
-        :index="index"
-        :active="index === activeIndex"
-        :should-load="Math.abs(index - activeIndex) <= 1"
-        :muted="muted"
-        @toggle-mute="toggleMute"
-      />
-    </div>
-
-    <div v-if="!filtered.length" class="feed-empty">
-      <p class="feed-empty__title">这个标签下还没有视频</p>
-      <button type="button" class="feed-empty__button" @click="selectTag(null)">查看全部</button>
-    </div>
 
     </div>
 
-    <div class="feed-nav" aria-label="切换视频">
-      <button
-        type="button"
-        class="feed-nav__button"
-        aria-label="上一个视频"
-        :disabled="activeIndex <= 0"
-        @click="goRelative(-1)"
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-        </svg>
-      </button>
-      <button
-        type="button"
-        class="feed-nav__button"
-        aria-label="下一个视频"
-        :disabled="activeIndex >= filtered.length - 1"
-        @click="goRelative(1)"
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
-        </svg>
-      </button>
-    </div>
+    <section v-else class="page-panel search-panel">
+      <div class="search-head">
+        <label class="search-field">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="10.8" cy="10.8" r="6.2" stroke="currentColor" stroke-width="1.9" fill="none"></circle>
+            <path d="M15.4 15.4L20 20" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path>
+          </svg>
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="search"
+            placeholder="搜索标题、简介或标签"
+            aria-label="搜索标题、简介或标签"
+          >
+          <button v-if="searchQuery" type="button" class="search-clear" aria-label="清除搜索" @click="searchQuery = ''">
+            &times;
+          </button>
+        </label>
+        <button type="button" class="search-cancel" @click="closeSearch">取消</button>
+      </div>
+
+      <p class="search-count">{{ searchResults.length }} 条结果</p>
+      <VideoGrid :entries="searchResults" @select="openDetail" />
+
+      <footer class="page-footer">
+        <span>@{{ site.author.name }}</span>
+        <span>Copyright &copy; {{ site.copyrightYear }}</span>
+      </footer>
+    </section>
+
+    <TopicBubble
+      :open="topicBubbleOpen"
+      :tags="presetTags"
+      :selected="draftTopics"
+      @toggle="toggleDraftTopic"
+      @apply="applyTopics"
+    />
+
+    <SideDrawer :open="drawerOpen" @close="drawerOpen = false" />
+
+    <SearchDetail
+      v-if="detailOpen"
+      :entries="detailEntries"
+      :start-index="detailStart"
+      @close="closeDetail"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import type { CatalogEntry } from '~/types/catalog'
+import { canEmbed } from '~/utils/embed'
 import { SITE as site } from '~/utils/site'
+
+type ViewName = 'home' | 'search'
 
 interface SlideHandle {
   togglePlay: () => void
 }
 
 const { entries, presetTags } = useCatalog()
+const { push } = useToast()
 
-const activeTag = ref<string | null>(null)
+const selectedTopics = ref<string[]>([])
+
+function setTopics(tags: string[]) {
+  selectedTopics.value = [...new Set(tags.filter(tag => typeof tag === 'string' && tag.length > 0))]
+}
+
+const view = ref<ViewName>('home')
+const drawerOpen = ref(false)
+const topicBubbleOpen = ref(false)
+const draftTopics = ref<string[]>([])
+const detailOpen = ref(false)
+const detailEntries = ref<CatalogEntry[]>([])
+const detailStart = ref(0)
+const searchQuery = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
+
 const activeIndex = ref(0)
 const muted = ref(true)
 const scrollEl = ref<HTMLElement | null>(null)
 const slideRefs = ref<Array<SlideHandle | null>>([])
+const upstreams = ref<Set<string>>(
+  new Set(
+    entries
+      .filter(entry => entry.default_mod === 'upstream' && canEmbed(entry))
+      .map(entry => entry.filename)
+  )
+)
+const shuffledEntries = ref<CatalogEntry[]>([])
 let scrollFrame = 0
 
-const filtered = computed(() => {
-  if (!activeTag.value) {
-    return entries
+const feedEntries = computed(() => {
+  const base = shuffledEntries.value.length ? shuffledEntries.value : entries
+  if (!selectedTopics.value.length) {
+    return base
   }
-  return entries.filter(entry => entry.tags.includes(activeTag.value as string))
+  const selected = selectedTopics.value
+  return base
+    .map((entry, index) => ({
+      entry,
+      index,
+      score: selected.filter(tag => entry.tags.includes(tag)).length
+    }))
+    .filter(item => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(item => item.entry)
 })
 
-function selectTag(tag: string | null) {
-  activeTag.value = activeTag.value === tag ? null : tag
+const searchResults = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase()
+  if (!keyword) {
+    return entries
+  }
+  return entries.filter((entry) => {
+    const haystack = entry.title + ' ' + entry.desc + ' ' + entry.tags.join(' ')
+    return haystack.toLowerCase().includes(keyword)
+  })
+})
+
+const activeTab = computed<'home' | 'topics' | 'search'>(() => {
+  if (view.value === 'search') {
+    return 'search'
+  }
+  return topicBubbleOpen.value || selectedTopics.value.length > 0 ? 'topics' : 'home'
+})
+
+const activeSlide = computed(() => {
+  if (view.value !== 'home' || topicBubbleOpen.value) {
+    return -1
+  }
+  return activeIndex.value
+})
+
+async function resetFeed() {
+  activeIndex.value = 0
+  await nextTick()
+  scrollEl.value?.scrollTo({ top: 0 })
+}
+
+async function handleTab(tab: 'home' | 'topics') {
+  if (tab === 'home') {
+    topicBubbleOpen.value = false
+    setTopics([])
+    view.value = 'home'
+    await resetFeed()
+    return
+  }
+
+  if (view.value === 'search') {
+    view.value = 'home'
+  }
+  if (topicBubbleOpen.value) {
+    applyTopics()
+    return
+  }
+  draftTopics.value = [...selectedTopics.value]
+  topicBubbleOpen.value = true
+}
+
+function toggleDraftTopic(tag: string) {
+  if (draftTopics.value.includes(tag)) {
+    draftTopics.value = draftTopics.value.filter(item => item !== tag)
+  } else {
+    draftTopics.value = [...draftTopics.value, tag]
+  }
+}
+
+function applyTopics() {
+  setTopics(draftTopics.value)
+  topicBubbleOpen.value = false
+  resetFeed()
+}
+
+function clearTopics() {
+  setTopics([])
+  resetFeed()
+}
+
+function openDrawer() {
+  if (topicBubbleOpen.value) {
+    applyTopics()
+  }
+  drawerOpen.value = true
+}
+
+async function openSearch() {
+  if (topicBubbleOpen.value) {
+    applyTopics()
+  }
+  view.value = 'search'
+  detailOpen.value = false
+  searchQuery.value = ''
+  await nextTick()
+  searchInput.value?.focus()
+}
+
+async function closeSearch() {
+  detailOpen.value = false
+  view.value = 'home'
+  await resetFeed()
+}
+
+function openDetail(entry: CatalogEntry) {
+  const list = searchResults.value
+  const index = list.findIndex(item => item.filename === entry.filename)
+  detailEntries.value = [...list]
+  detailStart.value = index >= 0 ? index : 0
+  detailOpen.value = true
+}
+
+function closeDetail() {
+  detailOpen.value = false
 }
 
 function setSlideRef(element: unknown, index: number) {
   slideRefs.value[index] = (element as SlideHandle) || null
 }
+
+function toggleUpstream(entry: CatalogEntry) {
+  if (!canEmbed(entry)) {
+    push('无上游源', 'error')
+    return
+  }
+  const next = new Set(upstreams.value)
+  if (next.has(entry.filename)) {
+    next.delete(entry.filename)
+    push('当前视频已切换为站内源')
+  } else {
+    next.add(entry.filename)
+    push('当前视频已切换为上游源')
+  }
+  upstreams.value = next
+}
+
+function shuffleEntries(list: CatalogEntry[]) {
+  const next = [...list]
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const current = next[index]
+    next[index] = next[swapIndex]
+    next[swapIndex] = current
+  }
+  return next
+}
+
+watch(selectedTopics, () => {
+  if (view.value === 'home') {
+    resetFeed()
+  }
+})
 
 function onScroll() {
   if (scrollFrame) {
@@ -139,7 +297,7 @@ function onScroll() {
       return
     }
     const next = Math.round(element.scrollTop / element.clientHeight)
-    const clamped = Math.min(Math.max(next, 0), Math.max(filtered.value.length - 1, 0))
+    const clamped = Math.min(Math.max(next, 0), Math.max(feedEntries.value.length - 1, 0))
     if (clamped !== activeIndex.value) {
       activeIndex.value = clamped
     }
@@ -151,7 +309,7 @@ function goRelative(offset: number) {
   if (!element) {
     return
   }
-  const next = Math.min(Math.max(activeIndex.value + offset, 0), filtered.value.length - 1)
+  const next = Math.min(Math.max(activeIndex.value + offset, 0), feedEntries.value.length - 1)
   if (next === activeIndex.value) {
     return
   }
@@ -163,13 +321,35 @@ function toggleMute() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (event.defaultPrevented) {
+  if (event.key === 'Escape') {
+    if (detailOpen.value) {
+      detailOpen.value = false
+      return
+    }
+    if (drawerOpen.value) {
+      drawerOpen.value = false
+      return
+    }
+    if (topicBubbleOpen.value) {
+      applyTopics()
+      return
+    }
+    if (view.value === 'search') {
+      closeSearch()
+      return
+    }
     return
   }
+
+  if (view.value !== 'home' || topicBubbleOpen.value || detailOpen.value || drawerOpen.value) {
+    return
+  }
+
   const target = event.target as HTMLElement | null
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
     return
   }
+
   if (event.key === 'ArrowDown' || event.key === 'PageDown') {
     event.preventDefault()
     goRelative(1)
@@ -187,20 +367,11 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
-watch(activeTag, async () => {
+onMounted(async () => {
+  shuffledEntries.value = shuffleEntries(entries)
   activeIndex.value = 0
   await nextTick()
   scrollEl.value?.scrollTo({ top: 0 })
-})
-
-onMounted(async () => {
-  await nextTick()
-  /* 恢复刷新前停留的条目,避免首条在视口外自动播放 */
-  const element = scrollEl.value
-  if (element) {
-    const restored = Math.round(element.scrollTop / element.clientHeight)
-    activeIndex.value = Math.min(Math.max(restored, 0), Math.max(filtered.value.length - 1, 0))
-  }
   window.addEventListener('keydown', handleKeydown)
 })
 
@@ -213,8 +384,7 @@ onBeforeUnmount(() => {
 
 useSeoMeta({
   title: '个人短视频流',
-  description: site.description,
-  ogTitle: '个人短视频流',
-  ogDescription: site.description
+  description: '个人版抖音式竖屏短视频流,上下滑动浏览,支持话题与搜索',
+  ogTitle: '个人短视频流'
 })
 </script>

@@ -16,7 +16,15 @@ export async function readJsonDocument(filePath) {
   return { raw, value: JSON.parse(raw), style: detectStyle(raw) }
 }
 
-export function formatJsonDocument(value, style) {
+/* 把清单条目的 tags 数组压缩为单行 */
+function inlineTagsArrays(body) {
+  return body.replace(/"tags": \[\n([\s\S]*?)\n[ \t]*\]/g, (match, inner) => {
+    const items = inner.split(/,\n/).map(item => item.trim()).filter(Boolean)
+    return '"tags": [' + items.join(', ') + ']'
+  })
+}
+
+export function formatJsonDocument(value, style, options = {}) {
   let body
 
   /* 零缩进的字符串数组按每行一项输出,保持标签文件的既有风格 */
@@ -26,6 +34,9 @@ export function formatJsonDocument(value, style) {
       + style.newline + ']'
   } else {
     body = JSON.stringify(value, null, style.indent || 0)
+    if (options.inlineTags) {
+      body = inlineTagsArrays(body)
+    }
     if (style.newline === '\r\n') {
       body = body.replace(/\n/g, '\r\n')
     }
@@ -34,6 +45,6 @@ export function formatJsonDocument(value, style) {
   return style.trailingNewline ? body + style.newline : body
 }
 
-export async function writeJsonDocument(filePath, value, style) {
-  await writeFile(filePath, formatJsonDocument(value, style), 'utf8')
+export async function writeJsonDocument(filePath, value, style, options = {}) {
+  await writeFile(filePath, formatJsonDocument(value, style, options), 'utf8')
 }

@@ -15,8 +15,10 @@ export function useToast() {
 
   function push(message: string, tone: ToastItem['tone'] = 'info') {
     const id = ++nextId
-    items.value = [...items.value, { id, message, tone }]
-    setTimeout(() => dismiss(id), 3200)
+    /* 只保留一条气泡,新气泡立即替换旧气泡 */
+    const next = [...items.value, { id, message, tone }].slice(-1)
+    items.value = next
+    setTimeout(() => dismiss(id), 2000)
   }
 
   return { items, push, dismiss }

@@ -32,6 +32,9 @@ test('按拼音排序标签与条目并写回', async () => {
   const manifest = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
   assert.deepEqual(manifest.total.map(entry => entry.title), ['丙', '丁', '乙', '甲'])
   assert.deepEqual(manifest.total.find(entry => entry.title === '甲').tags, ['本'])
+
+  const rawManifest = await readFile(fixture.manifestPath, 'utf8')
+  assert.equal(rawManifest.includes('"tags": ["本"]'), true)
 })
 
 test('标签文件保持零缩进逐行风格', async () => {
