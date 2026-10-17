@@ -1,9 +1,8 @@
 <template>
-  <div class="app-shell">
-    <div class="app-shell__glow" aria-hidden="true"></div>
-    <SiteHeader />
-    <NuxtPage />
-    <SiteFooter />
+  <div class="app-root">
+    <div class="stage">
+      <NuxtPage />
+    </div>
     <ToastStack />
   </div>
 </template>

@@ -1,8 +1,8 @@
 /* 站点外观与内容相关的设计细节集中存放,便于整体替换 */
 export const SITE = {
   title: 'awesome-short-video',
-  subtitle: '精选短视频收藏',
-  description: '精选收藏的短视频合集,按标签分类浏览,支持站内播放与来源跳转',
+  subtitle: '个人短视频流',
+  description: '个人版抖音式竖屏短视频流,上下滑动浏览,支持标签筛选与来源跳转',
   author: {
     name: 'WencueCryforme',
     url: 'https://github.com/WencueCryforme'
@@ -14,7 +14,9 @@ export const SITE = {
   /* 过大文件的条目标记,与清单约定一致 */
   tooLargeFlag: 'THE_FILE_SIZE_IS_TOO_LARGE',
   /* 版权年份 */
-  copyrightYear: 2026
+  copyrightYear: 2026,
+  /* 主题偏好的本地存储键 */
+  themeStorageKey: 'awesome-short-video-theme'
 } as const
 
 export type SiteConfig = typeof SITE

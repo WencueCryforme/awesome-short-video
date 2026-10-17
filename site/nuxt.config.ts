@@ -24,12 +24,19 @@ export default defineNuxtConfig({
       meta: [
         { name: 'description', content: SITE.description },
         { name: 'author', content: SITE.author.name },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+        { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { property: 'og:title', content: SITE.title },
         { property: 'og:description', content: SITE.description },
         { property: 'og:type', content: 'website' }
       ],
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: baseURL + 'favicon.svg' }]
+      link: [{ rel: 'icon', type: 'image/svg+xml', href: baseURL + 'favicon.svg' }],
+      script: [
+        {
+          key: 'theme-init',
+          tagPosition: 'head',
+          innerHTML: "(function(){try{var key='" + SITE.themeStorageKey + "';var stored=localStorage.getItem(key);var theme=stored==='light'||stored==='dark'?stored:(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',theme)}catch(error){document.documentElement.setAttribute('data-theme','dark')}})()"
+        }
+      ]
     }
   },
   css: ['~/assets/css/main.css'],
