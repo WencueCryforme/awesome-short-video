@@ -25,6 +25,7 @@
         v-if="shouldLoad || preloadCover"
         ref="videoEl"
         class="feed-slide__video"
+        :class="{ 'is-ready': videoReady }"
         :src="videoUrl + VIDEO_COVER_FRAGMENT"
         :muted="muted"
         playsinline
@@ -34,6 +35,7 @@
         :style="{ '--video-shift': videoShift + 'px' }"
         @click.stop="onVideoClick"
         @loadedmetadata="onVideoMetadata"
+        @loadeddata="onVideoFirstFrame"
         @timeupdate="onTimeUpdate"
         @play="onPlay"
         @pause="onPause"
@@ -204,6 +206,7 @@ const isPaused = ref(true)
 const isSeeking = ref(false)
 const progress = ref(0)
 const videoShift = ref(0)
+const videoReady = ref(false)
 let lastToggleAt = 0
 let lastVideoClickAt = 0
 let videoClickTimer: ReturnType<typeof setTimeout> | null = null
@@ -236,6 +239,10 @@ function updateVideoShift() {
 async function onVideoMetadata() {
   await nextTick()
   updateVideoShift()
+}
+
+function onVideoFirstFrame() {
+  videoReady.value = true
 }
 
 async function play() {
@@ -419,18 +426,25 @@ onMounted(() => {
   if (videoEl.value && videoEl.value.readyState >= 1) {
     updateVideoShift()
   }
+  if (videoEl.value && videoEl.value.readyState >= 2) {
+    videoReady.value = true
+  }
   if (props.active && props.shouldLoad && !isUpstream.value) {
     play()
   }
 })
 
 watch(videoEl, (element) => {
+  videoReady.value = false
   if (!element) {
     videoShift.value = 0
     return
   }
   if (element.readyState >= 1) {
     nextTick(updateVideoShift)
+  }
+  if (element.readyState >= 2) {
+    videoReady.value = true
   }
 })
 

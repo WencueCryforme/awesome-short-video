@@ -320,7 +320,13 @@ svg {
   height: auto;
   background: var(--video-bg);
   object-fit: contain;
+  opacity: 0;
   transform: translate(-50%, -50%) translateY(calc(-1 * var(--video-shift, 0px)));
+  transition: opacity 0.16s ease;
+}
+
+.feed-slide__video.is-ready {
+  opacity: 1;
 }
 
 .feed-slide__shade {
