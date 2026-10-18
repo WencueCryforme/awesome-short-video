@@ -57,7 +57,7 @@
                 <p class="drawer__row-desc">
                   {{ isUrlOverride ? 'URL 参数覆盖:' + (mode === 'upstream' ? '上游源' : '站内源') : (uiMode === 'upstream' ? '当前为上游源' : '当前为站内源') }}
                 </p>
-                <p class="drawer__row-hint">{{ isUrlOverride ? '清除 mod 参数后恢复' : '清单条目设置优先' }}</p>
+                <p class="drawer__row-hint">{{ isUrlOverride ? '清除 mode 参数后恢复' : '清单条目设置优先' }}</p>
               </div>
               <button
                 type="button"

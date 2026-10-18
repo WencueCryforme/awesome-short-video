@@ -37,10 +37,10 @@ NUXT_APP_BASE_URL=/<仓库名>/ npm run generate
 - 话题标签双击阈值为 300ms;双击保留当前选项,回到顶部并打乱视频顺序
 - 切换话题选择后重新打乱结果顺序;从话题回到首页按全部话题处理并重新打乱
 - 左上三横线按钮: 打开左侧栏,内含作者、GitHub 仓库、主题开关与播放模式开关
-- 播放模式切换站内源与上游源,缺省为站内源,选择写入本地存储;清单条目的 default_mod 优先
-- URL 参数 `?mod=onsite` 或 `?mod=upstream` 可覆盖播放模式,优先级高于侧栏;参数不写入本地存储,移除后恢复侧栏模式
-- `mod` 参数有效时隐藏侧栏入口
-- 清单条目的显式 `default_mod` 仍优先于 URL 参数与侧栏播放模式
+- 播放模式切换站内源与上游源,缺省为站内源,选择写入本地存储;清单条目的 default_mode 优先
+- URL 参数 `?mode=onsite` 或 `?mode=upstream` 可覆盖播放模式,优先级高于侧栏;参数不写入本地存储,移除后恢复侧栏模式
+- `mode` 参数有效时隐藏侧栏入口
+- 清单条目的显式 `default_mode` 仍优先于 URL 参数与侧栏播放模式
 - URL 参数 `?topic=标签1_标签2` 临时指定话题,仅在命中标签且结果非空时生效
 - 临时话题生效时隐藏侧栏入口与话题标签,首页临时展示该话题内容;参数移除后恢复
 - 页面启动时主 UI 先隐藏,URL 参数解析完成后一次性显示
@@ -59,7 +59,7 @@ NUXT_APP_BASE_URL=/<仓库名>/ npm run generate
 - 视频第一帧加载前隐藏 video 元素,避免浏览器默认封面闪烁
 - 站内源第一帧加载前显示加载中提示,上游源不显示
 - 始终预加载当前视频后两条的封面,避免下滑后无封面
-- 向下滑到最后一条视频时,飘窗提示“已经到底啦~”
+- 到达最后一条视频后继续尝试向下滑动时,飘窗提示“已经到底啦~”,可重复触发;仅到达末条时不提示
 - 默认静音自动播放,点击视频暂停或继续,右侧按钮开关声音
 - 右侧操作栏按钮顺序为静音、来源、链接、换源、清屏
 - 换源可将单条视频切换为上游 iframe,播放模式仅内存保留
@@ -89,14 +89,14 @@ NUXT_APP_BASE_URL=/<仓库名>/ npm run generate
 ## 换源与上游源
 
 - 每条视频默认使用站内源,点击右侧换源按钮可切换为上游 iframe
-- 每条视频按 `default_mod` 选择初始源,显式值优先于侧栏播放模式;缺失时使用侧栏播放模式
-- `allow_iframe` 为 false 时,即使 `default_mod` 为 `upstream` 也会退化为站内源
+- 每条视频按 `default_mode` 选择初始源,显式值优先于侧栏播放模式;缺失时使用侧栏播放模式
+- `allow_iframe` 为 false 时,即使 `default_mode` 为 `upstream` 也会退化为站内源
 - 抖音来源使用条目 `source_id` 直接拼装 `https://open.douyin.com/player/video?vid=<id>&autoplay=0`,其他来源按原页面嵌入
 - 不请求公开 iframe 接口,iframe 由站点自建,固定 9:16 且宽度与视频区域一致
 - `allow_iframe` 缺省视为 true,为 false 时点击换源提示无上游源
 - 切换后从导航栏下方弹出 2 秒气泡,只保留一个,入场动画从上向下
 - 上游源状态下仅保留导航与换源按钮,iframe 可直接交互
-- 单条视频的播放模式只保存在内存中,刷新后恢复默认值,即清单 default_mod 或侧栏播放模式
+- 单条视频的播放模式只保存在内存中,刷新后恢复默认值,即清单 default_mode 或侧栏播放模式
 - 来源站可能拒绝被嵌入,画面空白时切回站内源或直接打开来源
 
 ## 可调参数
@@ -107,7 +107,7 @@ NUXT_APP_BASE_URL=/<仓库名>/ npm run generate
 - `DEFAULT_THEME`: 默认主题
 - `DEFAULT_SOURCE_MODE`: 默认播放模式
 - `SOURCE_MODE_STORAGE_KEY`: 播放模式存储键
-- `MOD_QUERY_PARAM`: URL 播放模式参数名
+- `MODE_QUERY_PARAM`: URL 播放模式参数名
 - `TOPIC_QUERY_PARAM`: URL 临时话题参数名
 - `TOPIC_QUERY_SEPARATOR`: URL 多话题分隔符
 - `VIDEO_COVER_FRAGMENT`: 视频封面预加载时间点
@@ -115,13 +115,14 @@ NUXT_APP_BASE_URL=/<仓库名>/ npm run generate
 - `TOAST`: 通知时长与数量
 - `FEED_END_MESSAGE`: 视频流到底提示文案
 - `TITLE_MARQUEE`: 标题轮播停留时长、速度与最短滚动时长
+- `FEED_END_TOAST_COOLDOWN_MS`: 到底提示的重复触发冷却
 - `TOPIC_BUBBLE`: 话题气泡间距、内边距与边框
 - `EMBED`: 抖音播放器地址与 autoplay 参数
 
 ## 数据来源
 
 - 清单与标签预选项在构建期读取,站点不回写源文件
-- 清单条目可携带 `source_id`、`allow_iframe` 与 `default_mod`,后两者分别缺省为 true 与 onsite
-- `default_mod` 只决定首次进入视频时使用的源,不限制换源
+- 清单条目可携带 `source_id`、`allow_iframe` 与 `default_mode`,后两者分别缺省为 true 与 onsite
+- `default_mode` 只决定首次进入视频时使用的源,不限制换源
 - 过大的视频目录不进入构建产物
 - 标记为过大文件的条目只显示切换上游源的提示,不加载站内视频

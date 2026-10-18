@@ -12,7 +12,15 @@
 
     <div v-if="view === 'home'" class="feed-layout">
       <div class="feed-shell">
-        <div ref="scrollEl" class="feed-scroll" @scroll.passive="onScroll">
+        <div
+          ref="scrollEl"
+          class="feed-scroll"
+          @scroll.passive="onScroll"
+          @wheel.passive="feedEnd.onWheel"
+          @touchstart.passive="feedEnd.onTouchStart"
+          @touchend.passive="feedEnd.onTouchEnd"
+          @touchcancel.passive="feedEnd.onTouchCancel"
+        >
           <FeedSlide
             v-for="(entry, index) in feedEntries"
             :key="entry.filename"
@@ -92,8 +100,9 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { canEmbed } from '~/utils/embed'
-import { FEED_END_MESSAGE, INTERACTION, SITE as site, TOPIC_QUERY_PARAM, TOPIC_QUERY_SEPARATOR } from '~/const'
+import { INTERACTION, SITE as site, TOPIC_QUERY_PARAM, TOPIC_QUERY_SEPARATOR } from '~/const'
 import type { SourceMode } from '~/const'
+import { useFeedEndToast } from '~/composables/useFeedEndToast'
 import { useSourceMode } from '~/composables/useSourceMode'
 
 type ViewName = 'home' | 'search'
@@ -132,7 +141,7 @@ const slideRefs = ref<Array<SlideHandle | null>>([])
 function buildInitialUpstreams(mode: SourceMode) {
   return new Set(
     entries
-      .filter(entry => (entry.default_mod ?? mode) === 'upstream' && canEmbed(entry))
+      .filter(entry => (entry.default_mode ?? mode) === 'upstream' && canEmbed(entry))
       .map(entry => entry.filename)
   )
 }
@@ -140,7 +149,7 @@ function buildInitialUpstreams(mode: SourceMode) {
 function applySourceMode(mode: SourceMode) {
   const next = new Set(upstreams.value)
   for (const entry of entries) {
-    if (entry.default_mod) {
+    if (entry.default_mode) {
       continue
     }
     if (!canEmbed(entry)) {
@@ -209,6 +218,17 @@ const feedEntries = computed(() => {
   const selected = topicFilter.value
   return base.filter(entry => selected.some(tag => entry.tags.includes(tag)))
 })
+
+function isAtFeedEnd() {
+  const element = scrollEl.value
+  const length = feedEntries.value.length
+  if (!element || !length || activeIndex.value < length - 1) {
+    return false
+  }
+  return element.scrollTop + element.clientHeight >= element.scrollHeight - 4
+}
+
+const feedEnd = useFeedEndToast({ isAtEnd: isAtFeedEnd, push })
 
 const searchResults = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase()
@@ -458,9 +478,6 @@ function onScroll() {
     const next = Math.round(element.scrollTop / element.clientHeight)
     const clamped = Math.min(Math.max(next, 0), Math.max(feedEntries.value.length - 1, 0))
     if (clamped !== activeIndex.value) {
-      if (feedEntries.value.length > 1 && clamped === feedEntries.value.length - 1 && activeIndex.value < clamped) {
-        push(FEED_END_MESSAGE)
-      }
       activeIndex.value = clamped
     }
   })
@@ -514,6 +531,10 @@ function handleKeydown(event: KeyboardEvent) {
 
   if (event.key === 'ArrowDown' || event.key === 'PageDown') {
     event.preventDefault()
+    if (isAtFeedEnd()) {
+      feedEnd.notify()
+      return
+    }
     goRelative(1)
   } else if (event.key === 'ArrowUp' || event.key === 'PageUp') {
     event.preventDefault()

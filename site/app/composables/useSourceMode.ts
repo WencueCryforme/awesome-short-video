@@ -1,18 +1,18 @@
-import { DEFAULT_SOURCE_MODE, MOD_QUERY_PARAM, SOURCE_MODE_STORAGE_KEY } from '~/const'
+import { DEFAULT_SOURCE_MODE, MODE_QUERY_PARAM, SOURCE_MODE_STORAGE_KEY } from '~/const'
 import type { SourceMode } from '~/const'
 
 function isSourceMode(value: string | null): value is SourceMode {
   return value === 'onsite' || value === 'upstream'
 }
 
-/* 全局默认源,清单条目显式 default_mod 时以清单为准 */
+/* 全局默认源,清单条目显式 default_mode 时以清单为准 */
 export function useSourceMode() {
   const route = useRoute()
   const uiMode = useState<SourceMode>('site-source-mode', () => DEFAULT_SOURCE_MODE)
   const hydrated = useState('site-source-mode-hydrated', () => false)
 
   const rawUrlMode = computed<SourceMode | null>(() => {
-    const raw = route.query[MOD_QUERY_PARAM]
+    const raw = route.query[MODE_QUERY_PARAM]
     const value = Array.isArray(raw) ? raw[0] : raw
     return isSourceMode(value ?? null) ? value : null
   })

@@ -100,8 +100,8 @@ async function main() {
       if (entry.allow_iframe !== undefined && typeof entry.allow_iframe !== 'boolean') {
         problems.push('allow_iframe 不是布尔值')
       }
-      if (entry.default_mod !== undefined && entry.default_mod !== 'onsite' && entry.default_mod !== 'upstream') {
-        problems.push('default_mod 取值非法: ' + String(entry.default_mod))
+      if (entry.default_mode !== undefined && entry.default_mode !== 'onsite' && entry.default_mode !== 'upstream') {
+        problems.push('default_mode 取值非法: ' + String(entry.default_mode))
       }
       if (!Array.isArray(entry.tags) || entry.tags.some(tag => !isNonEmptyString(tag))) {
         problems.push('tags 必须是非空字符串数组')

@@ -26,7 +26,7 @@ export const DEFAULT_THEME = 'light' as const
 export type SourceMode = 'onsite' | 'upstream'
 export const DEFAULT_SOURCE_MODE: SourceMode = 'onsite'
 export const SOURCE_MODE_STORAGE_KEY = 'awesome-short-video-source-mode'
-export const MOD_QUERY_PARAM = 'mod'
+export const MODE_QUERY_PARAM = 'mode'
 export const TOPIC_QUERY_PARAM = 'topic'
 export const TOPIC_QUERY_SEPARATOR = '_'
 
@@ -55,6 +55,7 @@ export const TITLE_MARQUEE = {
 
 /* 视频流到底提示 */
 export const FEED_END_MESSAGE = '已经到底啦~'
+export const FEED_END_TOAST_COOLDOWN_MS = 500
 
 /* 通知气泡参数 */
 export const TOAST = {

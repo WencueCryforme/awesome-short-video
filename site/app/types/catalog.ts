@@ -7,7 +7,7 @@ export interface CatalogEntry {
   source: string
   source_id?: string
   allow_iframe?: boolean
-  default_mod?: 'onsite' | 'upstream'
+  default_mode?: 'onsite' | 'upstream'
   tags: string[]
   flag?: TooLargeFlag
 }

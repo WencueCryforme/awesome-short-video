@@ -158,9 +158,9 @@ test('allow_iframe 非布尔值时失败', async () => {
   assert.equal(result.stdout.trim(), 'false')
 })
 
-test('default_mod 取值非法时失败', async () => {
+test('default_mode 取值非法时失败', async () => {
   const fixture = await createFixture({
-    manifest: makeManifest([makeEntry({ filename: 'a.mp4', default_mod: 'cloud' })]),
+    manifest: makeManifest([makeEntry({ filename: 'a.mp4', default_mode: 'cloud' })]),
     tags: ['爱'],
     files: ['a.mp4']
   })

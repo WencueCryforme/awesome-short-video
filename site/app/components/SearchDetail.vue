@@ -8,7 +8,15 @@
           </svg>
         </button>
 
-        <div ref="scrollEl" class="feed-scroll" @scroll.passive="onScroll">
+        <div
+          ref="scrollEl"
+          class="feed-scroll"
+          @scroll.passive="onScroll"
+          @wheel.passive="feedEnd.onWheel"
+          @touchstart.passive="feedEnd.onTouchStart"
+          @touchend.passive="feedEnd.onTouchEnd"
+          @touchcancel.passive="feedEnd.onTouchCancel"
+        >
           <FeedSlide
             v-for="(entry, index) in entries"
             :key="entry.filename"
@@ -35,8 +43,8 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { canEmbed } from '~/utils/embed'
-import { FEED_END_MESSAGE } from '~/const'
 import type { SourceMode } from '~/const'
+import { useFeedEndToast } from '~/composables/useFeedEndToast'
 import { useSourceMode } from '~/composables/useSourceMode'
 
 interface SlideHandle {
@@ -63,7 +71,7 @@ const clearMode = ref(false)
 function buildInitialUpstreams(mode: SourceMode) {
   return new Set(
     props.entries
-      .filter(entry => (entry.default_mod ?? mode) === 'upstream' && canEmbed(entry))
+      .filter(entry => (entry.default_mode ?? mode) === 'upstream' && canEmbed(entry))
       .map(entry => entry.filename)
   )
 }
@@ -71,7 +79,7 @@ function buildInitialUpstreams(mode: SourceMode) {
 function applySourceMode(mode: SourceMode) {
   const next = new Set(upstreams.value)
   for (const entry of props.entries) {
-    if (entry.default_mod) {
+    if (entry.default_mode) {
       continue
     }
     if (!canEmbed(entry)) {
@@ -108,13 +116,20 @@ function onScroll() {
     const next = Math.round(element.scrollTop / element.clientHeight)
     const clamped = Math.min(Math.max(next, 0), Math.max(props.entries.length - 1, 0))
     if (clamped !== activeIndex.value) {
-      if (props.entries.length > 1 && clamped === props.entries.length - 1 && activeIndex.value < clamped) {
-        push(FEED_END_MESSAGE)
-      }
       activeIndex.value = clamped
     }
   })
 }
+
+function isAtDetailEnd() {
+  const element = scrollEl.value
+  if (!element || !props.entries.length || activeIndex.value < props.entries.length - 1) {
+    return false
+  }
+  return element.scrollTop + element.clientHeight >= element.scrollHeight - 4
+}
+
+const feedEnd = useFeedEndToast({ isAtEnd: isAtDetailEnd, push })
 
 function goRelative(offset: number) {
   const element = scrollEl.value
@@ -155,6 +170,10 @@ function handleKeydown(event: KeyboardEvent) {
   }
   if (event.key === 'ArrowDown' || event.key === 'PageDown') {
     event.preventDefault()
+    if (isAtDetailEnd()) {
+      feedEnd.notify()
+      return
+    }
     goRelative(1)
   } else if (event.key === 'ArrowUp' || event.key === 'PageUp') {
     event.preventDefault()
