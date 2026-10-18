@@ -31,7 +31,9 @@
         webkit-playsinline
         loop
         :preload="active ? 'auto' : preloadCover ? 'metadata' : 'none'"
+        :style="{ '--video-shift': videoShift + 'px' }"
         @click.stop="onVideoClick"
+        @loadedmetadata="onVideoMetadata"
         @timeupdate="onTimeUpdate"
         @play="onPlay"
         @pause="onPause"
@@ -201,6 +203,7 @@ const progressEl = ref<HTMLDivElement | null>(null)
 const isPaused = ref(true)
 const isSeeking = ref(false)
 const progress = ref(0)
+const videoShift = ref(0)
 let lastToggleAt = 0
 let lastVideoClickAt = 0
 let videoClickTimer: ReturnType<typeof setTimeout> | null = null
@@ -214,6 +217,26 @@ const canSwitch = computed(() => embed.value !== null)
 const isUpstream = computed(() => props.upstream && canSwitch.value)
 const uiHidden = computed(() => isUpstream.value && props.active)
 const hideChrome = computed(() => uiHidden.value || props.clearMode)
+
+function updateVideoShift() {
+  const element = videoEl.value
+  if (!element || !element.videoWidth || !element.videoHeight) {
+    videoShift.value = 0
+    return
+  }
+  const width = element.clientWidth
+  const height = element.clientHeight
+  if (width <= 0 || height <= 0 || width <= height) {
+    videoShift.value = 0
+    return
+  }
+  videoShift.value = (width - height) / 2
+}
+
+async function onVideoMetadata() {
+  await nextTick()
+  updateVideoShift()
+}
 
 async function play() {
   const element = videoEl.value
@@ -392,12 +415,27 @@ watch(
 )
 
 onMounted(() => {
+  window.addEventListener('resize', updateVideoShift)
+  if (videoEl.value && videoEl.value.readyState >= 1) {
+    updateVideoShift()
+  }
   if (props.active && props.shouldLoad && !isUpstream.value) {
     play()
   }
 })
 
+watch(videoEl, (element) => {
+  if (!element) {
+    videoShift.value = 0
+    return
+  }
+  if (element.readyState >= 1) {
+    nextTick(updateVideoShift)
+  }
+})
+
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateVideoShift)
   cancelPendingClick()
   pause()
 })

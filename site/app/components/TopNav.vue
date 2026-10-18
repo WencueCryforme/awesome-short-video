@@ -1,5 +1,5 @@
 <template>
-  <header class="top-nav">
+  <header class="top-nav" :class="{ 'top-nav--over-video': overVideo }">
     <button type="button" class="nav-icon" aria-label="打开侧边栏" @click="emit('menu')">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"></path>
@@ -43,6 +43,7 @@
 <script setup lang="ts">
 defineProps<{
   active: 'home' | 'topics' | 'search'
+  overVideo?: boolean
 }>()
 
 const emit = defineEmits<{

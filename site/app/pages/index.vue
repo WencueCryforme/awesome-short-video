@@ -2,6 +2,7 @@
   <div class="app-view">
     <TopNav
       :active="activeTab"
+      :over-video="view === 'home'"
       @menu="openDrawer"
       @select="handleTab"
       @search="openSearch"
@@ -140,15 +141,7 @@ const feedEntries = computed(() => {
     return base
   }
   const selected = selectedTopics.value
-  return base
-    .map((entry, index) => ({
-      entry,
-      index,
-      score: selected.filter(tag => entry.tags.includes(tag)).length
-    }))
-    .filter(item => item.score > 0)
-    .sort((left, right) => right.score - left.score || left.index - right.index)
-    .map(item => item.entry)
+  return base.filter(entry => selected.some(tag => entry.tags.includes(tag)))
 })
 
 const searchResults = computed(() => {
@@ -246,8 +239,12 @@ async function handleTab(tab: 'home' | 'topics') {
       return
     }
     lastHomeClickAt = now
+    const hadTopics = topicBubbleOpen.value || selectedTopics.value.length > 0
     topicBubbleOpen.value = false
     setTopics([])
+    if (hadTopics) {
+      shuffledEntries.value = shuffleEntries(entries)
+    }
     view.value = 'home'
     await resetFeed()
     return
@@ -266,13 +263,21 @@ function toggleDraftTopic(tag: string) {
 }
 
 function applyTopics() {
+  const changed = !sameTopicSelection(draftTopics.value, selectedTopics.value)
   setTopics(draftTopics.value)
+  if (changed) {
+    shuffledEntries.value = shuffleEntries(entries)
+  }
   topicBubbleOpen.value = false
   resetFeed()
 }
 
 function clearTopics() {
+  const changed = selectedTopics.value.length > 0
   setTopics([])
+  if (changed) {
+    shuffledEntries.value = shuffleEntries(entries)
+  }
   resetFeed()
 }
 
@@ -336,6 +341,10 @@ function toggleUpstream(entry: CatalogEntry) {
     push('当前视频已切换为上游源')
   }
   upstreams.value = next
+}
+
+function sameTopicSelection(left: string[], right: string[]) {
+  return left.length === right.length && left.every(tag => right.includes(tag))
 }
 
 function shuffleEntries(list: CatalogEntry[]) {
