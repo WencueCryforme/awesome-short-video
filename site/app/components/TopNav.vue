@@ -1,10 +1,11 @@
 <template>
   <header class="top-nav" :class="{ 'top-nav--over-video': overVideo }">
-    <button type="button" class="nav-icon" aria-label="打开侧边栏" @click="emit('menu')">
+    <button v-if="!hideMenu" type="button" class="nav-icon" aria-label="打开侧边栏" @click="emit('menu')">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"></path>
       </svg>
     </button>
+    <span v-else class="nav-icon nav-icon--placeholder" aria-hidden="true"></span>
 
     <nav class="nav-tabs" aria-label="主导航">
       <button
@@ -16,6 +17,7 @@
         首页
       </button>
       <button
+        v-if="!hideTopics"
         type="button"
         class="nav-tab"
         :class="{ 'is-active': active === 'topics' }"
@@ -44,6 +46,8 @@
 defineProps<{
   active: 'home' | 'topics' | 'search'
   overVideo?: boolean
+  hideMenu?: boolean
+  hideTopics?: boolean
 }>()
 
 const emit = defineEmits<{

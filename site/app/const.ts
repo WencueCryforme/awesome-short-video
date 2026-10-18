@@ -22,6 +22,14 @@ export const SITE = {
 /* 默认主题 */
 export const DEFAULT_THEME = 'light' as const
 
+/* 默认视频来源与本地存储键 */
+export type SourceMode = 'onsite' | 'upstream'
+export const DEFAULT_SOURCE_MODE: SourceMode = 'onsite'
+export const SOURCE_MODE_STORAGE_KEY = 'awesome-short-video-source-mode'
+export const MOD_QUERY_PARAM = 'mod'
+export const TOPIC_QUERY_PARAM = 'topic'
+export const TOPIC_QUERY_SEPARATOR = '_'
+
 /* 视频封面预加载时间点 */
 export const VIDEO_COVER_FRAGMENT = '#t=0.1'
 
@@ -36,6 +44,17 @@ export const INTERACTION = {
   /* 视频暂停/继续后的点击冷却 */
   videoClickCooldownMs: 200
 } as const
+
+/* 视频标题轮播参数 */
+export const TITLE_MARQUEE = {
+  startPauseMs: 1000,
+  endPauseMs: 1000,
+  speedPxPerSecond: 50,
+  minScrollMs: 2000
+} as const
+
+/* 视频流到底提示 */
+export const FEED_END_MESSAGE = '已经到底啦~'
 
 /* 通知气泡参数 */
 export const TOAST = {

@@ -41,7 +41,7 @@
         @pause="onPause"
       ></video>
       <button
-        v-if="active && isPaused && !clearMode"
+        v-if="active && isPaused && videoReady"
         type="button"
         class="feed-slide__play"
         aria-label="播放视频"
@@ -49,6 +49,7 @@
       >
         <span class="play-triangle" aria-hidden="true"></span>
       </button>
+      <div v-if="showVideoLoading" class="feed-slide__loading" aria-live="polite">加载中...</div>
     </template>
 
     <div v-else-if="!isUpstream" class="feed-slide__locked">
@@ -147,7 +148,9 @@
     </button>
 
     <div v-if="!hideChrome" class="feed-slide__info">
-      <h2 class="feed-slide__title">{{ entry.title }}</h2>
+      <div ref="titleWrapEl" class="feed-slide__title-wrap">
+        <h2 ref="titleTrackEl" class="feed-slide__title">{{ entry.title }}</h2>
+      </div>
       <p class="feed-slide__desc">{{ entry.desc }}</p>
       <div class="feed-slide__tags">
         <span v-for="tag in entry.tags" :key="tag" class="feed-tag"># {{ tag }}</span>
@@ -180,7 +183,7 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { resolveEmbed } from '~/utils/embed'
-import { INTERACTION, SITE as site, VIDEO_COVER_FRAGMENT } from '~/const'
+import { INTERACTION, SITE as site, TITLE_MARQUEE, VIDEO_COVER_FRAGMENT } from '~/const'
 
 const props = defineProps<{
   entry: CatalogEntry
@@ -202,6 +205,8 @@ const emit = defineEmits<{
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const progressEl = ref<HTMLDivElement | null>(null)
+const titleWrapEl = ref<HTMLElement | null>(null)
+const titleTrackEl = ref<HTMLElement | null>(null)
 const isPaused = ref(true)
 const isSeeking = ref(false)
 const progress = ref(0)
@@ -210,6 +215,9 @@ const videoReady = ref(false)
 let lastToggleAt = 0
 let lastVideoClickAt = 0
 let videoClickTimer: ReturnType<typeof setTimeout> | null = null
+let titleRunId = 0
+let titleTimer: ReturnType<typeof setTimeout> | null = null
+let titleAnimation: Animation | null = null
 const resolveVideoUrl = useVideoUrl()
 const videoUrl = resolveVideoUrl(props.entry.filename)
 const { push } = useToast()
@@ -220,6 +228,113 @@ const canSwitch = computed(() => embed.value !== null)
 const isUpstream = computed(() => props.upstream && canSwitch.value)
 const uiHidden = computed(() => isUpstream.value && props.active)
 const hideChrome = computed(() => uiHidden.value || props.clearMode)
+const showVideoLoading = computed(
+  () => props.active && props.shouldLoad && !isLocked.value && !isUpstream.value && !videoReady.value && !props.clearMode
+)
+
+function cancelTitleCycle() {
+  titleRunId += 1
+  if (titleTimer) {
+    clearTimeout(titleTimer)
+    titleTimer = null
+  }
+  if (titleAnimation) {
+    titleAnimation.cancel()
+    titleAnimation = null
+  }
+  const track = titleTrackEl.value
+  if (track) {
+    track.style.transform = 'translateX(0)'
+  }
+}
+
+function scheduleTitle(delay: number, runId: number, action: () => void) {
+  titleTimer = setTimeout(() => {
+    titleTimer = null
+    if (runId === titleRunId) {
+      action()
+    }
+  }, delay)
+}
+
+function scrollTitle(runId: number, track: HTMLElement, distance: number) {
+  if (runId !== titleRunId) {
+    return
+  }
+  const duration = Math.max(
+    TITLE_MARQUEE.minScrollMs,
+    Math.round((distance / TITLE_MARQUEE.speedPxPerSecond) * 1000)
+  )
+  const animation = track.animate(
+    [
+      { transform: 'translateX(0)' },
+      { transform: 'translateX(-' + distance + 'px)' }
+    ],
+    { duration, easing: 'linear', fill: 'forwards' }
+  )
+  titleAnimation = animation
+  animation.onfinish = () => {
+    if (runId !== titleRunId) {
+      return
+    }
+    scheduleTitle(TITLE_MARQUEE.endPauseMs, runId, () => {
+      if (runId !== titleRunId) {
+        return
+      }
+      track.style.transform = 'translateX(-' + distance + 'px)'
+      animation.cancel()
+      if (titleAnimation === animation) {
+        titleAnimation = null
+      }
+      const back = track.animate(
+        [
+          { transform: 'translateX(-' + distance + 'px)' },
+          { transform: 'translateX(0)' }
+        ],
+        { duration, easing: 'linear', fill: 'forwards' }
+      )
+      titleAnimation = back
+      back.onfinish = () => {
+        if (runId !== titleRunId) {
+          return
+        }
+        scheduleTitle(TITLE_MARQUEE.startPauseMs, runId, () => {
+          if (runId !== titleRunId) {
+            return
+          }
+          back.cancel()
+          if (titleAnimation === back) {
+            titleAnimation = null
+          }
+          track.style.transform = 'translateX(0)'
+          scrollTitle(runId, track, distance)
+        })
+      }
+    })
+  }
+}
+
+function startTitleCycle() {
+  cancelTitleCycle()
+  if (!props.active || hideChrome.value) {
+    return
+  }
+  const wrap = titleWrapEl.value
+  const track = titleTrackEl.value
+  if (!wrap || !track) {
+    return
+  }
+  const distance = Math.max(0, track.scrollWidth - wrap.clientWidth)
+  if (distance <= 0) {
+    return
+  }
+  const runId = titleRunId
+  scheduleTitle(TITLE_MARQUEE.startPauseMs, runId, () => {
+    if (runId === titleRunId) {
+      scrollTitle(runId, track, distance)
+    }
+  })
+}
 
 function updateVideoShift() {
   const element = videoEl.value
@@ -233,7 +348,7 @@ function updateVideoShift() {
     videoShift.value = 0
     return
   }
-  videoShift.value = (width - height) / 2
+  videoShift.value = (width - height) / 4
 }
 
 async function onVideoMetadata() {
@@ -421,8 +536,16 @@ watch(
   }
 )
 
+watch(
+  [() => props.active, () => hideChrome.value],
+  () => {
+    nextTick(startTitleCycle)
+  }
+)
+
 onMounted(() => {
   window.addEventListener('resize', updateVideoShift)
+  window.addEventListener('resize', startTitleCycle)
   if (videoEl.value && videoEl.value.readyState >= 1) {
     updateVideoShift()
   }
@@ -432,6 +555,7 @@ onMounted(() => {
   if (props.active && props.shouldLoad && !isUpstream.value) {
     play()
   }
+  nextTick(startTitleCycle)
 })
 
 watch(videoEl, (element) => {
@@ -450,6 +574,8 @@ watch(videoEl, (element) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateVideoShift)
+  window.removeEventListener('resize', startTitleCycle)
+  cancelTitleCycle()
   cancelPendingClick()
   pause()
 })

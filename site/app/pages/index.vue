@@ -1,8 +1,10 @@
 <template>
-  <div class="app-view">
+  <div class="app-view" :class="{ 'is-booting': !urlReady }">
     <TopNav
       :active="activeTab"
       :over-video="view === 'home'"
+      :hide-menu="uiLocked"
+      :hide-topics="urlTopicActive"
       @menu="openDrawer"
       @select="handleTab"
       @search="openSearch"
@@ -90,7 +92,9 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { canEmbed } from '~/utils/embed'
-import { INTERACTION, SITE as site } from '~/const'
+import { FEED_END_MESSAGE, INTERACTION, SITE as site, TOPIC_QUERY_PARAM, TOPIC_QUERY_SEPARATOR } from '~/const'
+import type { SourceMode } from '~/const'
+import { useSourceMode } from '~/composables/useSourceMode'
 
 type ViewName = 'home' | 'search'
 
@@ -100,6 +104,9 @@ interface SlideHandle {
 
 const { entries, presetTags } = useCatalog()
 const { push } = useToast()
+const { mode: sourceMode, isUrlOverride } = useSourceMode()
+const route = useRoute()
+const urlReady = ref(false)
 
 const selectedTopics = ref<string[]>([])
 
@@ -121,13 +128,36 @@ const activeIndex = ref(0)
 const muted = ref(true)
 const scrollEl = ref<HTMLElement | null>(null)
 const slideRefs = ref<Array<SlideHandle | null>>([])
-const upstreams = ref<Set<string>>(
-  new Set(
+
+function buildInitialUpstreams(mode: SourceMode) {
+  return new Set(
     entries
-      .filter(entry => entry.default_mod === 'upstream' && canEmbed(entry))
+      .filter(entry => (entry.default_mod ?? mode) === 'upstream' && canEmbed(entry))
       .map(entry => entry.filename)
   )
-)
+}
+
+function applySourceMode(mode: SourceMode) {
+  const next = new Set(upstreams.value)
+  for (const entry of entries) {
+    if (entry.default_mod) {
+      continue
+    }
+    if (!canEmbed(entry)) {
+      next.delete(entry.filename)
+      continue
+    }
+    if (mode === 'upstream') {
+      next.add(entry.filename)
+    } else {
+      next.delete(entry.filename)
+    }
+  }
+  upstreams.value = next
+}
+
+const upstreams = ref<Set<string>>(buildInitialUpstreams(sourceMode.value))
+watch(sourceMode, mode => applySourceMode(mode))
 const clearMode = ref(false)
 let lastHomeClickAt = 0
 let lastTopicClickAt = 0
@@ -135,12 +165,48 @@ let topicClickTimer: ReturnType<typeof setTimeout> | null = null
 const shuffledEntries = ref<CatalogEntry[]>([])
 let scrollFrame = 0
 
+const urlTopicTags = computed(() => {
+  if (!urlReady.value) {
+    return []
+  }
+  const raw = route.query[TOPIC_QUERY_PARAM]
+  const text = Array.isArray(raw) ? raw[0] : raw
+  if (typeof text !== 'string') {
+    return []
+  }
+  const tags = text
+    .split(TOPIC_QUERY_SEPARATOR)
+    .map(tag => tag.trim())
+    .filter(tag => tag.length > 0 && presetTags.includes(tag))
+  return [...new Set(tags)]
+})
+
+const urlTopicCount = computed(() =>
+  entries.filter(entry => urlTopicTags.value.some(tag => entry.tags.includes(tag))).length
+)
+
+const urlTopicActive = computed(() => urlTopicTags.value.length > 0 && urlTopicCount.value > 0)
+const topicFilter = computed(() => (urlTopicActive.value ? urlTopicTags.value : selectedTopics.value))
+const uiLocked = computed(() => urlTopicActive.value || isUrlOverride.value)
+
+watch(urlTopicActive, active => {
+  if (active) {
+    topicBubbleOpen.value = false
+    drawerOpen.value = false
+  }
+})
+watch(uiLocked, locked => {
+  if (locked) {
+    drawerOpen.value = false
+  }
+})
+
 const feedEntries = computed(() => {
   const base = shuffledEntries.value.length ? shuffledEntries.value : entries
-  if (!selectedTopics.value.length) {
+  if (!topicFilter.value.length) {
     return base
   }
-  const selected = selectedTopics.value
+  const selected = topicFilter.value
   return base.filter(entry => selected.some(tag => entry.tags.includes(tag)))
 })
 
@@ -158,6 +224,9 @@ const searchResults = computed(() => {
 const activeTab = computed<'home' | 'topics' | 'search'>(() => {
   if (view.value === 'search') {
     return 'search'
+  }
+  if (urlTopicActive.value) {
+    return 'home'
   }
   return topicBubbleOpen.value || selectedTopics.value.length > 0 ? 'topics' : 'home'
 })
@@ -209,6 +278,9 @@ async function handleTopicDoubleClick() {
 }
 
 function handleTopicClick() {
+  if (urlTopicActive.value) {
+    return
+  }
   lastHomeClickAt = 0
   const now = Date.now()
   if (now - lastTopicClickAt <= INTERACTION.topicDoubleClickMs) {
@@ -233,23 +305,29 @@ async function handleTab(tab: 'home' | 'topics') {
     const now = Date.now()
     if (now - lastHomeClickAt <= INTERACTION.homeDoubleClickMs) {
       lastHomeClickAt = 0
-      if (import.meta.client) {
-        window.location.reload()
-      }
+      topicBubbleOpen.value = false
+      view.value = 'home'
+      shuffledEntries.value = shuffleEntries(entries)
+      await resetFeed()
       return
     }
     lastHomeClickAt = now
     const hadTopics = topicBubbleOpen.value || selectedTopics.value.length > 0
     topicBubbleOpen.value = false
-    setTopics([])
-    if (hadTopics) {
-      shuffledEntries.value = shuffleEntries(entries)
+    if (!urlTopicActive.value) {
+      setTopics([])
+      if (hadTopics) {
+        shuffledEntries.value = shuffleEntries(entries)
+      }
     }
     view.value = 'home'
     await resetFeed()
     return
   }
 
+  if (urlTopicActive.value) {
+    return
+  }
   lastHomeClickAt = 0
   handleTopicClick()
 }
@@ -282,6 +360,9 @@ function clearTopics() {
 }
 
 function openDrawer() {
+  if (uiLocked.value) {
+    return
+  }
   lastHomeClickAt = 0
   cancelTopicClick()
   lastTopicClickAt = 0
@@ -377,6 +458,9 @@ function onScroll() {
     const next = Math.round(element.scrollTop / element.clientHeight)
     const clamped = Math.min(Math.max(next, 0), Math.max(feedEntries.value.length - 1, 0))
     if (clamped !== activeIndex.value) {
+      if (feedEntries.value.length > 1 && clamped === feedEntries.value.length - 1 && activeIndex.value < clamped) {
+        push(FEED_END_MESSAGE)
+      }
       activeIndex.value = clamped
     }
   })
@@ -446,6 +530,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  urlReady.value = true
   shuffledEntries.value = shuffleEntries(entries)
   activeIndex.value = 0
   await nextTick()

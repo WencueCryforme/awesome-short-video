@@ -329,6 +329,31 @@ svg {
   opacity: 1;
 }
 
+.feed-slide__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  animation: loading-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
 .feed-slide__shade {
   position: absolute;
   inset: 0;
@@ -373,16 +398,23 @@ svg {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 }
 
+.feed-slide__title-wrap {
+  width: 100%;
+  overflow: hidden;
+}
+
 .feed-slide__title {
+  display: inline-block;
+  width: max-content;
+  max-width: none;
+  margin: 0;
   font-size: 20px;
   line-height: 1.35;
   font-weight: 700;
   color: #ffffff;
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: nowrap;
+  will-change: transform;
 }
 
 .feed-slide__desc {
@@ -783,7 +815,6 @@ html[data-theme="light"] .feed-empty__button {
 
   .feed-slide__title {
     font-size: 16px;
-    -webkit-line-clamp: 1;
   }
 
   .feed-rail {
@@ -813,6 +844,11 @@ html[data-theme="light"] .feed-empty__button {
   height: 100%;
   margin: 0 auto;
   overflow: hidden;
+}
+
+.app-view.is-booting {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .top-nav {
@@ -930,6 +966,11 @@ html[data-theme="light"] .feed-empty__button {
 .top-nav--over-video .nav-tab:hover,
 .top-nav--over-video .nav-tab.is-active {
   color: #ffffff;
+}
+
+.nav-icon--placeholder {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* 侧边栏 */
@@ -1098,6 +1139,13 @@ html[data-theme="light"] .feed-empty__button {
   color: var(--panel-muted);
 }
 
+.drawer__row-hint {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--panel-muted);
+  opacity: 0.72;
+}
+
 .switch {
   position: relative;
   width: 46px;
@@ -1123,6 +1171,11 @@ html[data-theme="light"] .feed-empty__button {
 .switch.is-on {
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .switch.is-on .switch__knob {

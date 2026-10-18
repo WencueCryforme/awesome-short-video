@@ -35,6 +35,9 @@
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
 import { canEmbed } from '~/utils/embed'
+import { FEED_END_MESSAGE } from '~/const'
+import type { SourceMode } from '~/const'
+import { useSourceMode } from '~/composables/useSourceMode'
 
 interface SlideHandle {
   togglePlay: () => void
@@ -50,18 +53,42 @@ const emit = defineEmits<{
 }>()
 
 const { push } = useToast()
+const { mode: sourceMode } = useSourceMode()
 const scrollEl = ref<HTMLElement | null>(null)
 const slideRefs = ref<Array<SlideHandle | null>>([])
 const activeIndex = ref(props.startIndex)
 const muted = ref(true)
 const clearMode = ref(false)
-const upstreams = ref<Set<string>>(
-  new Set(
+
+function buildInitialUpstreams(mode: SourceMode) {
+  return new Set(
     props.entries
-      .filter(entry => entry.default_mod === 'upstream' && canEmbed(entry))
+      .filter(entry => (entry.default_mod ?? mode) === 'upstream' && canEmbed(entry))
       .map(entry => entry.filename)
   )
-)
+}
+
+function applySourceMode(mode: SourceMode) {
+  const next = new Set(upstreams.value)
+  for (const entry of props.entries) {
+    if (entry.default_mod) {
+      continue
+    }
+    if (!canEmbed(entry)) {
+      next.delete(entry.filename)
+      continue
+    }
+    if (mode === 'upstream') {
+      next.add(entry.filename)
+    } else {
+      next.delete(entry.filename)
+    }
+  }
+  upstreams.value = next
+}
+
+const upstreams = ref<Set<string>>(buildInitialUpstreams(sourceMode.value))
+watch(sourceMode, mode => applySourceMode(mode))
 let scrollFrame = 0
 
 function setSlideRef(element: unknown, index: number) {
@@ -79,7 +106,13 @@ function onScroll() {
       return
     }
     const next = Math.round(element.scrollTop / element.clientHeight)
-    activeIndex.value = Math.min(Math.max(next, 0), Math.max(props.entries.length - 1, 0))
+    const clamped = Math.min(Math.max(next, 0), Math.max(props.entries.length - 1, 0))
+    if (clamped !== activeIndex.value) {
+      if (props.entries.length > 1 && clamped === props.entries.length - 1 && activeIndex.value < clamped) {
+        push(FEED_END_MESSAGE)
+      }
+      activeIndex.value = clamped
+    }
   })
 }
 
