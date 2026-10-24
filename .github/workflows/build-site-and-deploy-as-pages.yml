@@ -37,7 +37,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Validate video manifest
-        run: node scripts/check-video-manifest.mjs --bool
+        run: node scripts/check-video-manifest.mjs
 
       - name: Generate static site
         working-directory: site

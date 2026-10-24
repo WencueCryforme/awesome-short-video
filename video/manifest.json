@@ -8,6 +8,9 @@
         "desc": "",
         "filename": "",
         "source": "",
+        "source_id": "",
+        "allow_iframe": true,
+        "default_mode": "",
         "tags": []
     },
     "total": [

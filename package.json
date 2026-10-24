@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node scripts/tests/check-video-manifest.test.mjs && node scripts/tests/sort-video-manifest_tags.test.mjs",
     "check:manifest": "node scripts/check-video-manifest.mjs",
-    "sort:manifest": "node scripts/sort-video-manifest_tags.mjs"
+    "sort:manifest": "node scripts/sort-video-manifest_tags.mjs",
+    "addnew": "node scripts/add-new-video-reaction.mjs"
   }
 }

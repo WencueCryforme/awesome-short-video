@@ -4,19 +4,24 @@ import { fileURLToPath } from 'node:url'
 export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export const DEFAULT_MANIFEST = resolve(PROJECT_ROOT, 'video', 'manifest.json')
 
-const FLAG_OPTIONS = new Set(['bool', 'check', 'mute'])
-const VALUE_OPTIONS = new Set(['manifest', 'tags'])
+const FLAG_OPTIONS = new Set(['check', 'no-open'])
+const VALUE_OPTIONS = new Set(['manifest', 'tags', 'port'])
+
+/* 带连字符的选项在结果对象里转成驼峰,便于直接读取 */
+function toOptionKey(name) {
+  return name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
+}
 
 export class CliError extends Error {}
 
 /* 解析 --flag 与 --key value / --key=value 两种写法 */
 export function parseArgs(argv) {
   const options = {
-    bool: false,
     check: false,
-    mute: false,
+    noOpen: false,
     manifest: null,
-    tags: null
+    tags: null,
+    port: null
   }
   const errors = []
 
@@ -37,20 +42,20 @@ export function parseArgs(argv) {
         errors.push('选项 --' + name + ' 不接受值')
         continue
       }
-      options[name] = true
+      options[toOptionKey(name)] = true
       continue
     }
 
     if (VALUE_OPTIONS.has(name)) {
       const value = inline !== null ? inline : argv[index + 1]
       if (!value || value.startsWith('--')) {
-        errors.push('选项 --' + name + ' 缺少路径')
+        errors.push('选项 --' + name + ' 缺少值')
         continue
       }
       if (inline === null) {
         index += 1
       }
-      options[name] = value
+      options[toOptionKey(name)] = value
       continue
     }
 

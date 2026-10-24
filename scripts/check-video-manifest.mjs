@@ -2,8 +2,9 @@ import { readdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { CliError, DEFAULT_MANIFEST, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument } from './lib/json-style.mjs'
+import { TOO_LARGE_FLAG, entryFieldProblems, isNonEmptyString } from './lib/manifest-entry.mjs'
+import { emitResult, makeError } from './lib/result.mjs'
 
-const TOO_LARGE = 'THE_FILE_SIZE_IS_TOO_LARGE'
 const { options, errors } = parseArgs(process.argv.slice(2))
 const checks = []
 
@@ -15,34 +16,51 @@ function record(name, ok, message, details) {
   checks.push(item)
 }
 
-/* 无论成功失败,调试信息都一次性输出,随后输出最终布尔值 */
+/* 从检查项的 details 里提炼一句可读摘要,便于命令行直接看出问题位置 */
+function summarizeDetails(details) {
+  if (!Array.isArray(details) || details.length === 0) {
+    return ''
+  }
+
+  const parts = []
+  for (const item of details.slice(0, 3)) {
+    if (typeof item === 'string') {
+      parts.push(item)
+    } else if (item && Array.isArray(item.problems)) {
+      parts.push('第 ' + (Number(item.index) + 1) + ' 条 ' + item.problems.join('、'))
+    } else if (item && typeof item.problem === 'string') {
+      parts.push(item.problem)
+    }
+  }
+
+  return parts.join('; ')
+}
+
+/* 无论成功失败都一次性给出全部检查项,失败时取首个失败项作为错误描述 */
 function finish(fatal) {
   if (fatal) {
     record('前置条件', false, fatal)
   }
   const passed = checks.length > 0 && checks.every(item => item.ok)
-  if (!options.bool) {
-    console.log(JSON.stringify({ ok: passed, checks }, null, 2))
+
+  if (passed) {
+    emitResult({ ok: true, data: { manifest: currentManifestPath, checks } })
+    return
   }
-  console.log(passed ? 'true' : 'false')
-  process.exitCode = passed ? 0 : 1
+
+  const failed = checks.filter(item => item.ok === false)
+  const summary = summarizeDetails(failed[0].details)
+  emitResult({
+    ok: false,
+    error: makeError(
+      failed[0].name + ': ' + failed[0].message + (summary ? '(' + summary + ')' : ''),
+      'manifest',
+      { manifest: currentManifestPath, failed: failed.map(item => item.name), checks }
+    )
+  })
 }
 
-function isNonEmptyString(value) {
-  return typeof value === 'string' && value.trim().length > 0
-}
-
-function describeSource(value) {
-  if (!isNonEmptyString(value)) {
-    return '为空'
-  }
-  try {
-    const url = new URL(value)
-    return /^https?:$/.test(url.protocol) ? null : '协议不是 http/https'
-  } catch {
-    return '不是合法链接'
-  }
-}
+let currentManifestPath = DEFAULT_MANIFEST
 
 async function main() {
   if (errors.length > 0) {
@@ -50,6 +68,7 @@ async function main() {
   }
 
   const manifestPath = options.manifest ? resolve(process.cwd(), options.manifest) : DEFAULT_MANIFEST
+  currentManifestPath = manifestPath
 
   let manifest
   try {
@@ -77,39 +96,7 @@ async function main() {
 
   const structuralProblems = []
   total.forEach((entry, index) => {
-    const problems = []
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
-      problems.push('条目不是对象')
-    } else {
-      if (!isNonEmptyString(entry.title)) {
-        problems.push('title 为空')
-      }
-      if (typeof entry.desc !== 'string') {
-        problems.push('desc 不是字符串')
-      }
-      if (!isNonEmptyString(entry.filename)) {
-        problems.push('filename 为空')
-      }
-      const sourceProblem = describeSource(entry.source)
-      if (sourceProblem) {
-        problems.push('source ' + sourceProblem)
-      }
-      if (entry.source_id !== undefined && !isNonEmptyString(entry.source_id)) {
-        problems.push('source_id 为空')
-      }
-      if (entry.allow_iframe !== undefined && typeof entry.allow_iframe !== 'boolean') {
-        problems.push('allow_iframe 不是布尔值')
-      }
-      if (entry.default_mode !== undefined && entry.default_mode !== 'onsite' && entry.default_mode !== 'upstream') {
-        problems.push('default_mode 取值非法: ' + String(entry.default_mode))
-      }
-      if (!Array.isArray(entry.tags) || entry.tags.some(tag => !isNonEmptyString(tag))) {
-        problems.push('tags 必须是非空字符串数组')
-      }
-      if (entry.flag !== undefined && entry.flag !== TOO_LARGE) {
-        problems.push('flag 取值非法: ' + String(entry.flag))
-      }
-    }
+    const problems = entryFieldProblems(entry)
     if (problems.length > 0) {
       structuralProblems.push({ index, filename: entry && entry.filename, problems })
     }
@@ -163,7 +150,7 @@ async function main() {
     const videoFileSet = new Set(videoFiles)
 
     const missingFiles = total
-      .filter(entry => entry && entry.flag !== TOO_LARGE && isNonEmptyString(entry.filename) && !videoFileSet.has(entry.filename))
+      .filter(entry => entry && entry.flag !== TOO_LARGE_FLAG && isNonEmptyString(entry.filename) && !videoFileSet.has(entry.filename))
       .map(entry => entry.filename)
     record(
       '普通条目文件存在',
@@ -173,7 +160,7 @@ async function main() {
     )
 
     const flaggedPresent = total
-      .filter(entry => entry && entry.flag === TOO_LARGE && isNonEmptyString(entry.filename) && videoFileSet.has(entry.filename))
+      .filter(entry => entry && entry.flag === TOO_LARGE_FLAG && isNonEmptyString(entry.filename) && videoFileSet.has(entry.filename))
       .map(entry => entry.filename)
     record(
       '过大条目未入库',
@@ -184,7 +171,7 @@ async function main() {
 
     const referenced = new Set(
       total
-        .filter(entry => entry && entry.flag !== TOO_LARGE && isNonEmptyString(entry.filename))
+        .filter(entry => entry && entry.flag !== TOO_LARGE_FLAG && isNonEmptyString(entry.filename))
         .map(entry => entry.filename)
     )
     const extraFiles = videoFiles.filter(name => !referenced.has(name))

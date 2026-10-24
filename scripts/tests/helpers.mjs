@@ -27,13 +27,23 @@ export function makeEntry(overrides = {}) {
   }
 }
 
+/* 空模板与 video/manifest.json 的 blank 保持一致,含除 flag 外的全部条目字段 */
 export function makeManifest(total, overrides = {}) {
   return {
     desc: '测试清单',
     filepath: './file',
     filesize: '<=25MB',
     tags: './tags.json',
-    blank: { title: '', desc: '', filename: '', source: '', tags: [] },
+    blank: {
+      title: '',
+      desc: '',
+      filename: '',
+      source: '',
+      source_id: '',
+      allow_iframe: true,
+      default_mode: '',
+      tags: []
+    },
     total,
     ...overrides
   }
@@ -113,7 +123,11 @@ export function runScript(scriptName, args) {
   return { stdout, stderr, status: result.status, error: result.error }
 }
 
-export function readBoolean(result) {
+/* 标准输出有且只有一行结果对象,测试统一从该行取结果 */
+export function readResult(result) {
   const lines = (result.stdout || '').trim().split(/\r?\n/).filter(Boolean)
-  return lines.length > 0 ? lines[lines.length - 1] : ''
+  if (lines.length !== 1) {
+    throw new Error('标准输出应当只有一行,实际为 ' + lines.length + ' 行: ' + result.stdout)
+  }
+  return JSON.parse(lines[0])
 }

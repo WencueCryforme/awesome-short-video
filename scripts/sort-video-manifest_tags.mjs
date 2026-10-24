@@ -1,58 +1,35 @@
-import { spawnSync } from 'node:child_process'
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync } from 'node:fs'
-import { randomUUID } from 'node:crypto'
-import { basename, dirname, join, resolve } from 'node:path'
-import { copyFile, mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_MANIFEST, PROJECT_ROOT, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
+import { basename, dirname, join, resolve } from 'node:path'
+import { copyFile, readFile, unlink, writeFile } from 'node:fs/promises'
+import { DEFAULT_MANIFEST, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument, writeJsonDocument } from './lib/json-style.mjs'
 import { compareEntries, sortByPinyin } from './lib/pinyin-sort.mjs'
+import { runChildScript } from './lib/child.mjs'
+import { emitResult, makeError } from './lib/result.mjs'
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url)
 const CHECK_SCRIPT = resolve(dirname(SCRIPT_PATH), 'check-video-manifest.mjs')
 const { options, errors } = parseArgs(process.argv.slice(2))
 const steps = []
 
-function emit(ok, silent) {
-  if (!options.mute && !silent) {
-    console.log(JSON.stringify({ ok, steps }, null, 2))
-  }
-  console.log(ok ? 'true' : 'false')
-  process.exitCode = ok ? 0 : 1
+function succeed(data) {
+  emitResult({ ok: true, data: { steps, ...data } })
 }
 
-/* 捕获子进程最后一行输出作为布尔判定,输出走文件避免依赖管道 */
-async function runChild(script, args) {
-  const tempRoot = join(PROJECT_ROOT, 'temp')
-  await mkdir(tempRoot, { recursive: true })
-  const token = randomUUID()
-  const outPath = join(tempRoot, 'child-' + token + '.out')
-  const errPath = join(tempRoot, 'child-' + token + '.err')
-  const outFd = openSync(outPath, 'w')
-  const errFd = openSync(errPath, 'w')
+function fail(kind, message, details) {
+  emitResult({ ok: false, error: makeError(message, kind, details) })
+}
 
-  let result
+function tempPathFor(filePath) {
+  return join(dirname(filePath), basename(filePath, '.json') + '.temp.json')
+}
+
+async function removeQuietly(filePath) {
   try {
-    result = spawnSync(process.execPath, [script, ...args], {
-      cwd: process.cwd(),
-      stdio: ['ignore', outFd, errFd]
-    })
-  } finally {
-    closeSync(outFd)
-    closeSync(errFd)
+    await unlink(filePath)
+  } catch {
+    /* 临时文件不存在时无需处理 */
   }
-
-  const stdout = readFileSync(outPath, 'utf8')
-  const stderr = readFileSync(errPath, 'utf8')
-  rmSync(outPath, { force: true })
-  rmSync(errPath, { force: true })
-
-  if (result.error) {
-    return { ok: false, message: result.error.message }
-  }
-  const lines = (stdout || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
-  const last = lines.length > 0 ? lines[lines.length - 1] : ''
-  return { ok: last === 'true', status: result.status, last, stderr }
 }
 
 async function sortDocuments(manifestPath, tagsPath) {
@@ -79,29 +56,14 @@ async function sortDocuments(manifestPath, tagsPath) {
   await writeJsonDocument(tagsPath, sortedTags, tagsDocument.style)
   await writeJsonDocument(manifestPath, nextManifest, manifestDocument.style, { inlineTags: true })
 
-  return {
-    tagCount: sortedTags.length,
-    entryCount: sortedTotal.length
-  }
-}
-
-function tempPathFor(filePath) {
-  return join(dirname(filePath), basename(filePath, '.json') + '.temp.json')
-}
-
-async function removeQuietly(filePath) {
-  try {
-    await unlink(filePath)
-  } catch {
-    /* 临时文件不存在时无需处理 */
-  }
+  return { tagCount: sortedTags.length, entryCount: sortedTotal.length }
 }
 
 async function runCheckMode(manifestPath, tagsPath) {
-  const original = await runChild(CHECK_SCRIPT, ['--bool', '--manifest', manifestPath, '--tags', tagsPath])
+  const original = runChildScript(CHECK_SCRIPT, ['--manifest', manifestPath, '--tags', tagsPath])
   if (!original.ok) {
-    emit(false, true)
-    return
+    steps.push({ action: '原始文件校验', ok: false, message: original.error.message })
+    return fail('check', '原始文件校验失败: ' + original.error.message, { steps })
   }
   steps.push({ action: '原始文件校验', ok: true })
 
@@ -113,29 +75,27 @@ async function runCheckMode(manifestPath, tagsPath) {
     await copyFile(tagsPath, tempTags)
     steps.push({ action: '生成临时副本', ok: true, files: [tempManifest, tempTags] })
 
-    const sorted = await runChild(SCRIPT_PATH, ['--mute', '--manifest', tempManifest, '--tags', tempTags])
+    const sorted = runChildScript(SCRIPT_PATH, ['--manifest', tempManifest, '--tags', tempTags])
     if (!sorted.ok) {
-      steps.push({ action: '临时副本重排序', ok: false, message: sorted.message || sorted.last })
-      emit(false, true)
-      return
+      steps.push({ action: '临时副本重排序', ok: false, message: sorted.error.message })
+      return fail('sort', '临时副本重排序失败: ' + sorted.error.message, { steps })
     }
     steps.push({ action: '临时副本重排序', ok: true })
 
-    const verified = await runChild(CHECK_SCRIPT, ['--bool', '--manifest', tempManifest, '--tags', tempTags])
+    const verified = runChildScript(CHECK_SCRIPT, ['--manifest', tempManifest, '--tags', tempTags])
     if (!verified.ok) {
-      steps.push({ action: '重排序结果校验', ok: false, message: verified.message || verified.last })
-      emit(false, true)
-      return
+      steps.push({ action: '重排序结果校验', ok: false, message: verified.error.message })
+      return fail('check', '重排序结果校验失败: ' + verified.error.message, { steps })
     }
     steps.push({ action: '重排序结果校验', ok: true })
 
     await writeFile(manifestPath, await readFile(tempManifest))
     await writeFile(tagsPath, await readFile(tempTags))
     steps.push({ action: '覆写原文件', ok: true, manifest: manifestPath, tags: tagsPath })
-    emit(true)
+    return succeed({ manifest: manifestPath, tags: tagsPath })
   } catch (error) {
     steps.push({ action: '检查模式执行', ok: false, message: error.message })
-    emit(false, true)
+    return fail('sort', '检查模式执行失败: ' + error.message, { steps })
   } finally {
     await removeQuietly(tempManifest)
     await removeQuietly(tempTags)
@@ -145,20 +105,20 @@ async function runCheckMode(manifestPath, tagsPath) {
 async function main() {
   if (errors.length > 0) {
     steps.push({ action: '参数解析', ok: false, message: errors.join('; ') })
-    return emit(false)
+    return fail('args', errors.join('; '), { steps })
   }
 
   let manifest
+  let manifestPath
   try {
-    const manifestPath = options.manifest ? resolve(process.cwd(), options.manifest) : DEFAULT_MANIFEST
+    manifestPath = options.manifest ? resolve(process.cwd(), options.manifest) : DEFAULT_MANIFEST
     manifest = (await readJsonDocument(manifestPath)).value
   } catch (error) {
     steps.push({ action: '读取清单', ok: false, message: error.message })
-    return emit(false)
+    return fail('manifest', '读取清单失败: ' + error.message, { steps })
   }
 
   let tagsPath
-  let manifestPath
   try {
     const resolved = resolveSourcePaths(options, manifest)
     manifestPath = resolved.manifestPath
@@ -166,7 +126,7 @@ async function main() {
     steps.push({ action: '解析文件源', ok: true, manifest: manifestPath, tags: tagsPath })
   } catch (error) {
     steps.push({ action: '解析文件源', ok: false, message: error.message })
-    return emit(false)
+    return fail('manifest', '解析文件源失败: ' + error.message, { steps })
   }
 
   if (options.check) {
@@ -176,14 +136,14 @@ async function main() {
   try {
     const summary = await sortDocuments(manifestPath, tagsPath)
     steps.push({ action: '写入排序结果', ok: true, ...summary })
-    emit(true)
+    return succeed({ manifest: manifestPath, tags: tagsPath, ...summary })
   } catch (error) {
     steps.push({ action: '执行排序', ok: false, message: error.message })
-    emit(false)
+    return fail('sort', '执行排序失败: ' + error.message, { steps })
   }
 }
 
 main().catch((error) => {
   steps.push({ action: '未预期错误', ok: false, message: error.message })
-  emit(false)
+  fail('sort', '未预期错误: ' + error.message, { steps })
 })

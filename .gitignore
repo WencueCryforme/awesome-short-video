@@ -1,8 +1,11 @@
 # Agent Runtime
 AGENTS.md
+version.index.md
 .agent/
 .agents/
 temp/
+tmp/
+.skills/
 
 # Version documents
 v*-*.md
@@ -20,6 +23,11 @@ node_modules/
 dist/
 *.log
 .env
+
+# Build and release
+build/
+release/
+releases/
 
 # Script temporary files
 *.temp.json
