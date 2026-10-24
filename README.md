@@ -2,7 +2,7 @@
 
 # awesome-short-video
 
-[![Version](https://img.shields.io/badge/Version-26.10.18-00ee66)](https://github.com/WencueCryforme/awesome-short-video/tree/main)
+[![Version](https://img.shields.io/badge/Version-26.10.25-00ee66)](https://github.com/WencueCryforme/awesome-short-video/tree/main)
 [![Copyright](https://img.shields.io/badge/Copyright-WencueCryforme-ff8888)](./COPYRIGHT)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
 
@@ -30,6 +30,20 @@ Copyright &copy; 2026 WencueCryforme
 ## 许可证
 
 本仓库采用 [MIT 许可证](./LICENSE) 。
+
+
+## 脚本运行
+
+```
+# 运行测试
+npm run test
+# 运行manifest检查脚本
+npm run check:manifest
+# 运行manifest重排序脚本
+npm run sort:manifest
+# 打开图形界面新增视频条目
+npm run addnew
+```
 
 
 ## 来源声明

@@ -8,7 +8,7 @@ export const SITE = {
     url: 'https://github.com/WencueCryforme'
   },
   repositoryUrl: 'https://github.com/WencueCryforme/awesome-short-video',
-  version: '26.10.18',
+  version: '26.10.25',
   /* 入库视频目录,相对站点基路径 */
   videoDir: 'video/file',
   /* 过大文件的条目标记,与清单约定一致 */
