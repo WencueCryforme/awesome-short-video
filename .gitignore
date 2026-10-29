@@ -1,4 +1,38 @@
 # Agent Runtime
 AGENTS.md
+version.index.md
+.agent/
+.agents/
+temp/
+tmp/
+.skills/
 
-#
+# Version documents
+v*-*.md
+[0-9][0-9].[0-9][0-9].[0-9][0-9]-*.md
+
+# Video files are hosted on object storage, not tracked by git
+video/file/
+
+# Node.js
+node_modules/
+.nuxt/
+.output/
+.nitro/
+.cache/
+dist/
+*.log
+.env
+
+# Build and release
+build/
+release/
+releases/
+
+# Script temporary files
+*.temp.json
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

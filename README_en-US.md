@@ -2,7 +2,7 @@
 
 # awesome-short-video
 
-[![Version](https://img.shields.io/badge/Version-26.10.17-00ee66)](https://github.com/WencueCryforme/awesome-short-video/tree/main)
+[![Version](https://img.shields.io/badge/Version-26.10.29-00ee66)](https://github.com/WencueCryforme/awesome-short-video/tree/main)
 [![Copyright](https://img.shields.io/badge/Copyright-WencueCryforme-ff8888)](./COPYRIGHT)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](./LICENSE)
 
@@ -32,8 +32,27 @@ See [COPYRIGHT](./COPYRIGHT) for details.
 This repository is licensed under the [MIT License](./LICENSE).
 
 
+## Running Scripts
+
+```
+# Run tests
+npm run test
+# Run the manifest check script
+npm run check:manifest
+# Run the manifest reorder script
+npm run sort:manifest
+# Open the GUI to add a new video entry
+npm run addnew
+# Batch capture video covers
+npm run cover
+
+# Use -- before options, otherwise npm swallows them as its own config
+npm run cover -- --check
+```
+
+
 ## Source Attribution
 
 All videos are collected from the internet, and each one is credited with its specific source. If any content infringes your rights, please contact us for removal.
 
-See [catalog.json](./catalog/catalog.json) for the full source catalog.
+See [manifest.json](./video/manifest.json) for the full source catalog.
