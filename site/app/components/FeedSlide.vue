@@ -1,0 +1,585 @@
+<template>
+  <section
+    class="feed-slide"
+    :data-index="index"
+    @dblclick.stop="onSlideDoubleClick"
+  >
+    <div class="feed-slide__poster" aria-hidden="true"></div>
+
+    <img
+      v-if="shouldCover && !coverFailed"
+      ref="coverEl"
+      class="feed-slide__cover"
+      :class="{ 'is-hidden': videoReady }"
+      :src="coverUrl"
+      alt=""
+      :style="{ '--cover-shift': coverShift + 'px' }"
+      @load="updateCoverShift"
+      @error="coverFailed = true"
+    />
+    <video
+      v-if="shouldLoad"
+      ref="videoEl"
+      class="feed-slide__video"
+      :class="{ 'is-ready': videoReady }"
+      :src="videoUrl"
+      :muted="muted"
+      playsinline
+      webkit-playsinline
+      loop
+      :preload="active ? 'auto' : 'none'"
+      :style="{ '--video-shift': videoShift + 'px' }"
+      @click.stop="onVideoClick"
+      @loadedmetadata="onVideoMetadata"
+      @loadeddata="onVideoFirstFrame"
+      @timeupdate="onTimeUpdate"
+      @play="onPlay"
+      @pause="onPause"
+      @error="onVideoError"
+    ></video>
+    <button
+      v-if="active && isPaused && videoReady"
+      type="button"
+      class="feed-slide__play"
+      aria-label="播放视频"
+      @click.stop="togglePlay"
+    >
+      <span class="play-triangle" aria-hidden="true"></span>
+    </button>
+    <div v-if="showVideoLoading" class="feed-slide__loading" aria-live="polite">加载中...</div>
+
+    <div v-if="!hideChrome" class="feed-slide__shade" aria-hidden="true"></div>
+
+    <aside v-if="!hideChrome" class="feed-rail" aria-label="视频操作">
+      <button
+        type="button"
+        class="rail-button"
+        :aria-label="muted ? '开启声音' : '静音'"
+        @click.stop="emit('toggleMute')"
+      >
+        <svg v-if="muted" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 9.5h3.4L12 5.6v12.8L7.4 14.5H4z" fill="currentColor"></path>
+          <path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+        </svg>
+        <svg v-else viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 9.5h3.4L12 5.6v12.8L7.4 14.5H4z" fill="currentColor"></path>
+          <path d="M15.5 8.6a5 5 0 0 1 0 6.8M18 6.2a8.6 8.6 0 0 1 0 11.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+        </svg>
+        <span>{{ muted ? '静音' : '声音' }}</span>
+      </button>
+
+      <a
+        class="rail-button"
+        :href="entry.source"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="打开来源页面"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M14 4h6v6M20 4l-8.5 8.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+          <path d="M9 6H5.5A1.5 1.5 0 0 0 4 7.5v11A1.5 1.5 0 0 0 5.5 20h11a1.5 1.5 0 0 0 1.5-1.5V15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+        </svg>
+        <span>来源</span>
+      </a>
+
+      <button type="button" class="rail-button" aria-label="复制来源链接" @click.stop="copySource">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M10 14a4 4 0 0 1 0-5.6l3-3a4 4 0 1 1 5.6 5.6l-1.3 1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+          <path d="M14 10a4 4 0 0 1 0 5.6l-3 3A4 4 0 1 1 5.4 13l1.3-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+        </svg>
+        <span>链接</span>
+      </button>
+
+      <button
+        v-if="active && !clearMode"
+        type="button"
+        class="rail-button"
+        aria-label="清屏"
+        @click.stop="emit('clearScreen')"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 3l18 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+          <path d="M10.6 6.2A10 10 0 0 1 19.5 12a10.3 10.3 0 0 1-4.2 4.7M6.2 7.2A10.2 10.2 0 0 0 4.5 12a10 10 0 0 0 12 5.9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+        </svg>
+        <span>清屏</span>
+      </button>
+    </aside>
+
+    <div v-if="!hideChrome" class="feed-slide__info">
+      <div ref="titleWrapEl" class="feed-slide__title-wrap">
+        <h2 ref="titleTrackEl" class="feed-slide__title">{{ entry.title }}</h2>
+      </div>
+      <p class="feed-slide__desc">{{ entry.desc }}</p>
+      <div class="feed-slide__tags">
+        <span v-for="tag in entry.tags" :key="tag" class="feed-tag"># {{ tag }}</span>
+      </div>
+    </div>
+
+    <div
+      v-if="active"
+      ref="progressEl"
+      class="feed-slide__progress"
+      role="slider"
+      tabindex="0"
+      :aria-valuemin="0"
+      :aria-valuemax="100"
+      :aria-valuenow="Math.round(progress)"
+      aria-label="播放进度"
+      @pointerdown="onSeekStart"
+      @pointermove="onSeekMove"
+      @pointerup="onSeekEnd"
+      @pointercancel="onSeekEnd"
+      @keydown.left.prevent.stop="seekBy(-5)"
+      @keydown.right.prevent.stop="seekBy(5)"
+    >
+      <span class="feed-slide__progress-fill" :style="{ width: progress + '%' }"></span>
+      <span class="feed-slide__progress-thumb" :style="{ left: progress + '%' }"></span>
+    </div>
+  </section>
+</template>
+
+<script setup lang="ts">
+import type { CatalogEntry } from '~/types/catalog'
+import { INTERACTION, TITLE_MARQUEE } from '~/const'
+
+const props = defineProps<{
+  entry: CatalogEntry
+  index: number
+  active: boolean
+  shouldLoad: boolean
+  shouldCover: boolean
+  muted: boolean
+  clearMode: boolean
+}>()
+
+const emit = defineEmits<{
+  toggleMute: []
+  clearScreen: []
+  exitClearScreen: []
+}>()
+
+const videoEl = ref<HTMLVideoElement | null>(null)
+const coverEl = ref<HTMLImageElement | null>(null)
+const progressEl = ref<HTMLDivElement | null>(null)
+const titleWrapEl = ref<HTMLElement | null>(null)
+const titleTrackEl = ref<HTMLElement | null>(null)
+const isPaused = ref(true)
+const isSeeking = ref(false)
+const progress = ref(0)
+const videoShift = ref(0)
+const coverShift = ref(0)
+const videoReady = ref(false)
+const videoFailed = ref(false)
+const coverFailed = ref(false)
+let lastToggleAt = 0
+let lastVideoClickAt = 0
+let videoClickTimer: ReturnType<typeof setTimeout> | null = null
+let titleRunId = 0
+let titleTimer: ReturnType<typeof setTimeout> | null = null
+let titleAnimation: Animation | null = null
+let resizeFrame = 0
+const resolveVideoUrl = useVideoUrl()
+const videoUrl = resolveVideoUrl(props.entry.filename)
+const resolveCoverUrl = useCoverUrl()
+const coverUrl = resolveCoverUrl(props.entry.filename)
+const { push } = useToast()
+
+const hideChrome = computed(() => props.clearMode)
+const showVideoLoading = computed(
+  () => props.active && props.shouldLoad && !videoReady.value && !videoFailed.value && !props.clearMode
+)
+
+function cancelTitleCycle() {
+  titleRunId += 1
+  if (titleTimer) {
+    clearTimeout(titleTimer)
+    titleTimer = null
+  }
+  if (titleAnimation) {
+    titleAnimation.cancel()
+    titleAnimation = null
+  }
+  const track = titleTrackEl.value
+  if (track) {
+    track.style.transform = 'translateX(0)'
+  }
+}
+
+function scheduleTitle(delay: number, runId: number, action: () => void) {
+  titleTimer = setTimeout(() => {
+    titleTimer = null
+    if (runId === titleRunId) {
+      action()
+    }
+  }, delay)
+}
+
+function scrollTitle(runId: number, track: HTMLElement, distance: number) {
+  if (runId !== titleRunId) {
+    return
+  }
+  const duration = Math.max(
+    TITLE_MARQUEE.minScrollMs,
+    Math.round((distance / TITLE_MARQUEE.speedPxPerSecond) * 1000)
+  )
+  const animation = track.animate(
+    [
+      { transform: 'translateX(0)' },
+      { transform: 'translateX(-' + distance + 'px)' }
+    ],
+    { duration, easing: 'linear', fill: 'forwards' }
+  )
+  titleAnimation = animation
+  animation.onfinish = () => {
+    if (runId !== titleRunId) {
+      return
+    }
+    scheduleTitle(TITLE_MARQUEE.endPauseMs, runId, () => {
+      if (runId !== titleRunId) {
+        return
+      }
+      track.style.transform = 'translateX(-' + distance + 'px)'
+      animation.cancel()
+      if (titleAnimation === animation) {
+        titleAnimation = null
+      }
+      const back = track.animate(
+        [
+          { transform: 'translateX(-' + distance + 'px)' },
+          { transform: 'translateX(0)' }
+        ],
+        { duration, easing: 'linear', fill: 'forwards' }
+      )
+      titleAnimation = back
+      back.onfinish = () => {
+        if (runId !== titleRunId) {
+          return
+        }
+        scheduleTitle(TITLE_MARQUEE.startPauseMs, runId, () => {
+          if (runId !== titleRunId) {
+            return
+          }
+          back.cancel()
+          if (titleAnimation === back) {
+            titleAnimation = null
+          }
+          track.style.transform = 'translateX(0)'
+          scrollTitle(runId, track, distance)
+        })
+      }
+    })
+  }
+}
+
+function startTitleCycle() {
+  cancelTitleCycle()
+  if (!props.active || hideChrome.value) {
+    return
+  }
+  const wrap = titleWrapEl.value
+  const track = titleTrackEl.value
+  if (!wrap || !track) {
+    return
+  }
+  const distance = Math.max(0, track.scrollWidth - wrap.clientWidth)
+  if (distance <= 0) {
+    return
+  }
+  const runId = titleRunId
+  scheduleTitle(TITLE_MARQUEE.startPauseMs, runId, () => {
+    if (runId === titleRunId) {
+      scrollTitle(runId, track, distance)
+    }
+  })
+}
+
+function updateVideoShift() {
+  const element = videoEl.value
+  if (!element || !element.videoWidth || !element.videoHeight) {
+    videoShift.value = 0
+    return
+  }
+  const width = element.clientWidth
+  const height = element.clientHeight
+  if (width <= 0 || height <= 0 || width <= height) {
+    videoShift.value = 0
+    return
+  }
+  videoShift.value = (width - height) / 4
+}
+
+/* 封面与视频保持同一套居中与上移规则,避免视频首帧出现时位置跳动 */
+function updateCoverShift() {
+  const element = coverEl.value
+  if (!element || !element.naturalWidth || !element.naturalHeight) {
+    coverShift.value = 0
+    return
+  }
+  const width = element.clientWidth
+  const height = element.clientHeight
+  if (width <= 0 || height <= 0 || width <= height) {
+    coverShift.value = 0
+    return
+  }
+  coverShift.value = (width - height) / 4
+}
+
+/* 窗口尺寸变化时统一重算位移与标题滚动,同一帧内只执行一次 */
+function handleResize() {
+  if (resizeFrame) {
+    return
+  }
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0
+    updateVideoShift()
+    updateCoverShift()
+    startTitleCycle()
+  })
+}
+
+async function onVideoMetadata() {
+  await nextTick()
+  updateVideoShift()
+}
+
+function onVideoFirstFrame() {
+  videoReady.value = true
+}
+
+/* 视频源加载失败时停止显示加载提示,由封面继续占位并给出提醒 */
+function onVideoError() {
+  if (videoFailed.value) {
+    return
+  }
+  videoFailed.value = true
+  if (props.active) {
+    push('视频加载失败,请检查网络后重试', 'error')
+  }
+}
+
+async function play() {
+  const element = videoEl.value
+  if (!element) {
+    return
+  }
+  try {
+    await element.play()
+    isPaused.value = false
+  } catch {
+    /* 自动播放被拦截时保留播放按钮 */
+    isPaused.value = true
+  }
+}
+
+function pause() {
+  videoEl.value?.pause()
+}
+
+function togglePlay() {
+  const element = videoEl.value
+  if (!element) {
+    return
+  }
+  const now = Date.now()
+  if (now - lastToggleAt < INTERACTION.videoClickCooldownMs) {
+    return
+  }
+  lastToggleAt = now
+  if (element.paused) {
+    play()
+  } else {
+    element.pause()
+  }
+}
+
+function exitClearMode() {
+  if (props.clearMode) {
+    emit('exitClearScreen')
+  }
+}
+
+function cancelPendingClick() {
+  if (videoClickTimer) {
+    clearTimeout(videoClickTimer)
+    videoClickTimer = null
+  }
+}
+
+function onVideoClick() {
+  const now = Date.now()
+  if (now - lastVideoClickAt <= INTERACTION.videoDoubleClickMs) {
+    cancelPendingClick()
+    lastVideoClickAt = 0
+    exitClearMode()
+    return
+  }
+  if (now - lastToggleAt < INTERACTION.videoClickCooldownMs) {
+    return
+  }
+  cancelPendingClick()
+  lastVideoClickAt = now
+  videoClickTimer = setTimeout(() => {
+    videoClickTimer = null
+    lastVideoClickAt = 0
+    if (props.active) {
+      togglePlay()
+    }
+  }, INTERACTION.videoDoubleClickMs)
+}
+
+function onSlideDoubleClick() {
+  cancelPendingClick()
+  lastVideoClickAt = 0
+  exitClearMode()
+}
+
+function onPlay() {
+  isPaused.value = false
+}
+
+function onPause() {
+  isPaused.value = true
+}
+
+function onTimeUpdate() {
+  if (isSeeking.value) {
+    return
+  }
+  const element = videoEl.value
+  if (element && element.duration > 0) {
+    progress.value = (element.currentTime / element.duration) * 100
+  }
+}
+
+function seekToClientX(clientX: number) {
+  const bar = progressEl.value
+  const element = videoEl.value
+  if (!bar || !element || !Number.isFinite(element.duration) || element.duration <= 0) {
+    return
+  }
+  const rect = bar.getBoundingClientRect()
+  const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
+  element.currentTime = ratio * element.duration
+  progress.value = ratio * 100
+}
+
+function onSeekStart(event: PointerEvent) {
+  cancelPendingClick()
+  lastVideoClickAt = 0
+  emit('exitClearScreen')
+  isSeeking.value = true
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  seekToClientX(event.clientX)
+}
+
+function onSeekMove(event: PointerEvent) {
+  if (!isSeeking.value) {
+    return
+  }
+  seekToClientX(event.clientX)
+}
+
+function onSeekEnd(event: PointerEvent) {
+  isSeeking.value = false
+  const target = event.currentTarget as HTMLElement
+  if (target.hasPointerCapture(event.pointerId)) {
+    target.releasePointerCapture(event.pointerId)
+  }
+}
+
+function seekBy(seconds: number) {
+  cancelPendingClick()
+  lastVideoClickAt = 0
+  emit('exitClearScreen')
+  const element = videoEl.value
+  if (!element || !Number.isFinite(element.duration)) {
+    return
+  }
+  element.currentTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration)
+}
+
+async function copySource() {
+  try {
+    await navigator.clipboard.writeText(props.entry.source)
+    push('来源链接已复制')
+  } catch {
+    push('复制失败,请手动复制', 'error')
+  }
+}
+
+watch(
+  () => [props.active, props.shouldLoad],
+  async () => {
+    if (!props.active) {
+      cancelPendingClick()
+      lastVideoClickAt = 0
+    }
+    if (props.active && props.shouldLoad) {
+      await nextTick()
+      play()
+    } else {
+      pause()
+    }
+  }
+)
+
+watch(
+  () => props.muted,
+  (muted) => {
+    if (!muted && props.active) {
+      play()
+    }
+  }
+)
+
+watch(
+  [() => props.active, () => hideChrome.value],
+  () => {
+    nextTick(startTitleCycle)
+  }
+)
+
+onMounted(() => {
+  window.addEventListener('resize', handleResize)
+  updateCoverShift()
+  if (videoEl.value && videoEl.value.readyState >= 1) {
+    updateVideoShift()
+  }
+  if (videoEl.value && videoEl.value.readyState >= 2) {
+    videoReady.value = true
+  }
+  if (props.active && props.shouldLoad) {
+    play()
+  }
+  nextTick(startTitleCycle)
+})
+
+watch(videoEl, (element) => {
+  videoReady.value = false
+  videoFailed.value = false
+  if (!element) {
+    videoShift.value = 0
+    return
+  }
+  if (element.readyState >= 1) {
+    nextTick(updateVideoShift)
+  }
+  if (element.readyState >= 2) {
+    videoReady.value = true
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  if (resizeFrame) {
+    cancelAnimationFrame(resizeFrame)
+    resizeFrame = 0
+  }
+  cancelTitleCycle()
+  cancelPendingClick()
+  pause()
+})
+
+defineExpose({ togglePlay })
+</script>
