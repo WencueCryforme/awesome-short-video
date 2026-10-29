@@ -1,0 +1,13 @@
+{
+  "name": "awesome-short-video",
+  "version": "26.10.29",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/tests/check-video-manifest.test.mjs && node scripts/tests/sort-video-manifest_tags.test.mjs",
+    "check:manifest": "node scripts/check-video-manifest.mjs",
+    "sort:manifest": "node scripts/sort-video-manifest_tags.mjs",
+    "addnew": "node scripts/add-new-video-reaction.mjs",
+    "cover": "node scripts/catch-video-cover.mjs"
+  }
+}

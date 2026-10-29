@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>新增视频条目</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="app">
+    <header class="masthead">
+      <div class="badge-row">
+        <span class="badge">新增视频条目</span>
+      </div>
+      <h1>填写一条视频清单条目</h1>
+      <p class="subtitle">先写入临时清单,经排序与校验通过后才覆盖正式清单,任意环节失败都不会改动正式清单。</p>
+      <dl class="meta-list">
+        <div class="meta-item">
+          <dt>清单文件</dt>
+          <dd id="meta-manifest">正在读取</dd>
+        </div>
+        <div class="meta-item">
+          <dt>标签文件</dt>
+          <dd id="meta-tags">正在读取</dd>
+        </div>
+        <div class="meta-item">
+          <dt>条目数量</dt>
+          <dd id="meta-count">正在读取</dd>
+        </div>
+      </dl>
+    </header>
+
+    <form class="form" id="form" novalidate>
+      <section class="group" aria-labelledby="group-basic">
+        <h2 class="group-title" id="group-basic">基本信息</h2>
+
+        <div class="field" data-field="title">
+          <label class="label" for="title">标题<span class="req" aria-hidden="true">*</span></label>
+          <input class="control" type="text" id="title" autocomplete="off" placeholder="例如 猫咪打哈欠">
+          <p class="error" id="title-error"></p>
+        </div>
+
+        <div class="field" data-field="desc">
+          <label class="label" for="desc">简介<span class="req" aria-hidden="true">*</span></label>
+          <textarea class="control" id="desc" rows="3" placeholder="一句话描述这条视频的内容"></textarea>
+          <p class="error" id="desc-error"></p>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="group-media">
+        <h2 class="group-title" id="group-media">媒体与来源</h2>
+
+        <div class="field" data-field="filename">
+          <label class="label" for="filename">文件名<span class="req" aria-hidden="true">*</span></label>
+          <input class="control" type="text" id="filename" autocomplete="off" placeholder="例如 cat-yawn.mp4">
+          <p class="error" id="filename-error"></p>
+        </div>
+
+        <div class="field" data-field="source">
+          <label class="label" for="source">来源链接<span class="req" aria-hidden="true">*</span></label>
+          <input class="control" type="text" id="source" autocomplete="off" placeholder="https://">
+          <p class="error" id="source-error"></p>
+        </div>
+
+        <div class="field" data-field="source_id">
+          <label class="check">
+            <input type="checkbox" id="source_id_enabled">
+            <span>填写来源编号</span>
+          </label>
+          <input class="control" type="text" id="source_id" autocomplete="off" placeholder="可选,勾选后填写" disabled>
+          <p class="error" id="source_id-error"></p>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="group-tags">
+        <h2 class="group-title" id="group-tags">标签</h2>
+        <div class="field" data-field="tags">
+          <span class="label" id="tags-label">至少选择一个标签<span class="req" aria-hidden="true">*</span></span>
+          <div class="tags" id="tags" role="group" aria-labelledby="tags-label"></div>
+          <p class="error" id="tags-error"></p>
+        </div>
+      </section>
+    </form>
+
+    <div class="actionbar">
+      <button class="btn primary" type="button" id="submit">确定添加</button>
+      <button class="btn" type="button" id="reset">清空</button>
+      <button class="btn quiet" type="button" id="quit">结束</button>
+    </div>
+
+    <section class="result" id="result" hidden aria-live="polite">
+      <div class="result-head">
+        <p class="result-title" id="result-title"></p>
+        <button class="btn small" type="button" id="result-dismiss">收起</button>
+      </div>
+      <pre class="result-body" id="result-body"></pre>
+    </section>
+
+    <footer class="foot" id="author"></footer>
+  </main>
+
+  <div class="toast-layer" id="toast-layer" aria-live="polite" aria-atomic="false"></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
