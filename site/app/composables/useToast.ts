@@ -28,15 +28,11 @@ export function useToast() {
 
   function push(message: string, tone: ToastItem['tone'] = 'info') {
     const id = ++nextId
-    /* 按配置保留气泡数量,超出后立即移除旧气泡 */
-    const next = [...items.value, { id, message, tone }].slice(-TOAST.maxCount)
+    /* 换新时先撤掉全部旧气泡,新气泡重新挂载以播放入场动画 */
     for (const item of items.value) {
-      if (!next.some(entry => entry.id === item.id)) {
-        clearTimer(item.id)
-      }
+      clearTimer(item.id)
     }
-    items.value = next
-    clearTimer(id)
+    items.value = [{ id, message, tone }].slice(-TOAST.maxCount)
     timers.set(id, setTimeout(() => dismiss(id), TOAST.durationMs))
   }
 

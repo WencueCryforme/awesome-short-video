@@ -22,6 +22,13 @@ export function describeSource(value) {
 /* 条目允许出现的字段,空白模板与校验都以这一份清单为准 */
 export const ENTRY_FIELDS = ['title', 'desc', 'filename', 'source', 'source_id', 'tags']
 
+/* 由脚本生成的派生字段,不由人手动维护,空白模板中不出现 */
+export const HASH_ID_FIELD = 'hash_id'
+export const DERIVED_FIELDS = [HASH_ID_FIELD]
+
+/* 条目允许出现的全部字段,人工字段在前,派生字段在后 */
+export const ENTRY_KEYS = [...ENTRY_FIELDS, ...DERIVED_FIELDS]
+
 /* 逐项检查条目字段,返回问题描述列表 */
 export function entryFieldProblems(entry) {
   const problems = []
@@ -31,7 +38,7 @@ export function entryFieldProblems(entry) {
   }
 
   for (const key of Object.keys(entry)) {
-    if (!ENTRY_FIELDS.includes(key)) {
+    if (!ENTRY_KEYS.includes(key)) {
       problems.push('存在未知字段 ' + key)
     }
   }

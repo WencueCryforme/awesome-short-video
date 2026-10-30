@@ -2,6 +2,7 @@
   <section
     class="feed-slide"
     :data-index="index"
+    @click.stop="onSlideClick"
     @dblclick.stop="onSlideDoubleClick"
   >
     <div class="feed-slide__poster" aria-hidden="true"></div>
@@ -10,7 +11,7 @@
       v-if="shouldCover && !coverFailed"
       ref="coverEl"
       class="feed-slide__cover"
-      :class="{ 'is-hidden': videoReady }"
+      :class="{ 'is-hidden': coverHidden }"
       :src="coverUrl"
       alt=""
       :style="{ '--cover-shift': coverShift + 'px' }"
@@ -29,7 +30,6 @@
       loop
       :preload="active ? 'auto' : 'none'"
       :style="{ '--video-shift': videoShift + 'px' }"
-      @click.stop="onVideoClick"
       @loadedmetadata="onVideoMetadata"
       @loadeddata="onVideoFirstFrame"
       @timeupdate="onTimeUpdate"
@@ -37,6 +37,8 @@
       @pause="onPause"
       @error="onVideoError"
     ></video>
+    <!-- 透明蒙版,阻挡视频元素的原生交互 -->
+    <div class="feed-slide__mask" aria-hidden="true"></div>
     <button
       v-if="active && isPaused && videoReady"
       type="button"
@@ -74,6 +76,7 @@
         target="_blank"
         rel="noopener noreferrer"
         aria-label="打开来源页面"
+        @click.stop
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M14 4h6v6M20 4l-8.5 8.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
@@ -82,12 +85,14 @@
         <span>来源</span>
       </a>
 
-      <button type="button" class="rail-button" aria-label="复制来源链接" @click.stop="copySource">
+      <button type="button" class="rail-button" aria-label="复制分享链接" @click.stop="shareVideo">
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M10 14a4 4 0 0 1 0-5.6l3-3a4 4 0 1 1 5.6 5.6l-1.3 1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
-          <path d="M14 10a4 4 0 0 1 0 5.6l-3 3A4 4 0 1 1 5.4 13l1.3-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"></path>
+          <circle cx="17.5" cy="5.5" r="2.6" stroke="currentColor" stroke-width="1.7" fill="none"></circle>
+          <circle cx="6.5" cy="12" r="2.6" stroke="currentColor" stroke-width="1.7" fill="none"></circle>
+          <circle cx="17.5" cy="18.5" r="2.6" stroke="currentColor" stroke-width="1.7" fill="none"></circle>
+          <path d="M8.9 10.7l6.2-3.5M8.9 13.3l6.2 3.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
         </svg>
-        <span>链接</span>
+        <span>分享</span>
       </button>
 
       <button
@@ -125,6 +130,7 @@
       :aria-valuemax="100"
       :aria-valuenow="Math.round(progress)"
       aria-label="播放进度"
+      @click.stop
       @pointerdown="onSeekStart"
       @pointermove="onSeekMove"
       @pointerup="onSeekEnd"
@@ -140,7 +146,7 @@
 
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
-import { INTERACTION, TITLE_MARQUEE } from '~/const'
+import { INTERACTION, TITLE_MARQUEE, VIDEO_QUERY_PARAM } from '~/const'
 
 const props = defineProps<{
   entry: CatalogEntry
@@ -170,10 +176,12 @@ const videoShift = ref(0)
 const coverShift = ref(0)
 const videoReady = ref(false)
 const videoFailed = ref(false)
+const coverHidden = ref(false)
 const coverFailed = ref(false)
 let lastToggleAt = 0
-let lastVideoClickAt = 0
-let videoClickTimer: ReturnType<typeof setTimeout> | null = null
+let lastSlideClickAt = 0
+let slideClickTimer: ReturnType<typeof setTimeout> | null = null
+let coverHideTimer: ReturnType<typeof setTimeout> | null = null
 let titleRunId = 0
 let titleTimer: ReturnType<typeof setTimeout> | null = null
 let titleAnimation: Animation | null = null
@@ -346,6 +354,29 @@ function onVideoFirstFrame() {
   videoReady.value = true
 }
 
+function cancelCoverHide() {
+  if (coverHideTimer) {
+    clearTimeout(coverHideTimer)
+    coverHideTimer = null
+  }
+}
+
+/*
+ * 视频叠在封面之上,两者同时淡入淡出会在中途过度透出黑色底衬,
+ * 因此首帧出现后先让视频淡入完成,再延后隐藏封面
+ */
+watch(videoReady, (ready) => {
+  cancelCoverHide()
+  if (!ready) {
+    coverHidden.value = false
+    return
+  }
+  coverHideTimer = setTimeout(() => {
+    coverHideTimer = null
+    coverHidden.value = true
+  }, INTERACTION.coverHideDelayMs)
+})
+
 /* 视频源加载失败时停止显示加载提示,由封面继续占位并给出提醒 */
 function onVideoError() {
   if (videoFailed.value) {
@@ -399,17 +430,22 @@ function exitClearMode() {
 }
 
 function cancelPendingClick() {
-  if (videoClickTimer) {
-    clearTimeout(videoClickTimer)
-    videoClickTimer = null
+  if (slideClickTimer) {
+    clearTimeout(slideClickTimer)
+    slideClickTimer = null
   }
 }
 
-function onVideoClick() {
+function onSlideClick(event: MouseEvent) {
+  /* 滑片内的按钮与链接自行处理点击,其余区域统一按暂停/继续处理 */
+  const target = event.target as HTMLElement | null
+  if (target && target.closest('a, button')) {
+    return
+  }
   const now = Date.now()
-  if (now - lastVideoClickAt <= INTERACTION.videoDoubleClickMs) {
+  if (now - lastSlideClickAt <= INTERACTION.videoDoubleClickMs) {
     cancelPendingClick()
-    lastVideoClickAt = 0
+    lastSlideClickAt = 0
     exitClearMode()
     return
   }
@@ -417,10 +453,10 @@ function onVideoClick() {
     return
   }
   cancelPendingClick()
-  lastVideoClickAt = now
-  videoClickTimer = setTimeout(() => {
-    videoClickTimer = null
-    lastVideoClickAt = 0
+  lastSlideClickAt = now
+  slideClickTimer = setTimeout(() => {
+    slideClickTimer = null
+    lastSlideClickAt = 0
     if (props.active) {
       togglePlay()
     }
@@ -429,7 +465,7 @@ function onVideoClick() {
 
 function onSlideDoubleClick() {
   cancelPendingClick()
-  lastVideoClickAt = 0
+  lastSlideClickAt = 0
   exitClearMode()
 }
 
@@ -465,7 +501,7 @@ function seekToClientX(clientX: number) {
 
 function onSeekStart(event: PointerEvent) {
   cancelPendingClick()
-  lastVideoClickAt = 0
+  lastSlideClickAt = 0
   emit('exitClearScreen')
   isSeeking.value = true
   const target = event.currentTarget as HTMLElement
@@ -490,7 +526,7 @@ function onSeekEnd(event: PointerEvent) {
 
 function seekBy(seconds: number) {
   cancelPendingClick()
-  lastVideoClickAt = 0
+  lastSlideClickAt = 0
   emit('exitClearScreen')
   const element = videoEl.value
   if (!element || !Number.isFinite(element.duration)) {
@@ -499,10 +535,25 @@ function seekBy(seconds: number) {
   element.currentTime = Math.min(Math.max(element.currentTime + seconds, 0), element.duration)
 }
 
-async function copySource() {
+/* 分享链接取地址栏的干净地址(去掉查询参数与哈希)再拼 hash_id,部署路径与本地预览下都能直接打开 */
+function shareLink() {
+  const hashId = props.entry.hash_id
+  if (!hashId) {
+    return ''
+  }
+  const { origin, pathname } = window.location
+  return origin + pathname + '?' + VIDEO_QUERY_PARAM + '=' + encodeURIComponent(hashId)
+}
+
+async function shareVideo() {
+  const link = shareLink()
+  if (!link) {
+    push('该视频缺少分享标识', 'error')
+    return
+  }
   try {
-    await navigator.clipboard.writeText(props.entry.source)
-    push('来源链接已复制')
+    await navigator.clipboard.writeText(link)
+    push('分享链接已复制')
   } catch {
     push('复制失败,请手动复制', 'error')
   }
@@ -513,7 +564,7 @@ watch(
   async () => {
     if (!props.active) {
       cancelPendingClick()
-      lastVideoClickAt = 0
+      lastSlideClickAt = 0
     }
     if (props.active && props.shouldLoad) {
       await nextTick()
@@ -578,6 +629,7 @@ onBeforeUnmount(() => {
   }
   cancelTitleCycle()
   cancelPendingClick()
+  cancelCoverHide()
   pause()
 })
 

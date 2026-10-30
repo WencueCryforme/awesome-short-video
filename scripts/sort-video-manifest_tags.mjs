@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { copyFile, readFile } from 'node:fs/promises'
 import { DEFAULT_MANIFEST, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument, writeJsonDocumentAtomic } from './lib/json-style.mjs'
+import { withHashId } from './lib/hash-id.mjs'
 import { compareEntries, sortByPinyin } from './lib/pinyin-sort.mjs'
 import { runChildScript } from './lib/child.mjs'
 import { removeQuietly } from './lib/fs-util.mjs'
@@ -40,10 +41,14 @@ async function sortDocuments(manifestPath, tagsPath) {
   }
 
   const sortedTags = sortByPinyin(tagsDocument.value)
+  /* 标签先排序再算 hash_id,保证同样的内容得到同样的摘要 */
   const sortedTotal = manifestDocument.value.total
     .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return entry
+      }
       const tags = Array.isArray(entry.tags) ? sortByPinyin(entry.tags) : []
-      return { ...entry, tags }
+      return withHashId({ ...entry, tags })
     })
     .sort(compareEntries)
 

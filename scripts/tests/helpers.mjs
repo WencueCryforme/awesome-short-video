@@ -3,6 +3,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { runChildScript } from '../lib/child.mjs'
+import { withHashId } from '../lib/hash-id.mjs'
 
 export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const TEMP_ROOT = join(PROJECT_ROOT, 'temp')
@@ -15,15 +16,16 @@ process.on('exit', () => {
   }
 })
 
+/* 夹具条目按真实清单的形态带上由内容算出的 hash_id */
 export function makeEntry(overrides = {}) {
-  return {
+  return withHashId({
     title: '默认标题',
     desc: '默认简介',
     filename: 'default.mp4',
     source: 'https://example.com/video/1',
     tags: ['爱'],
     ...overrides
-  }
+  })
 }
 
 /* 空模板与 video/manifest.json 的 blank 保持一致 */
@@ -66,17 +68,21 @@ export async function createFixture(options) {
   return { dir, manifestPath, tagsPath }
 }
 
-/* 与脚本调用共用一套子进程执行逻辑,测试只关心标准输出与退出码 */
-export function runScript(scriptName, args) {
-  const result = runChildScript(join(PROJECT_ROOT, 'scripts', scriptName), args)
+/*
+ * 与脚本调用共用一套子进程执行逻辑,测试只关心标准输出与退出码
+ * options.inline 缺省为 true,需要观察缺省格式化输出时传 { inline: false }
+ */
+export function runScript(scriptName, args, options = {}) {
+  const result = runChildScript(join(PROJECT_ROOT, 'scripts', scriptName), args, options)
   return { stdout: result.stdout, stderr: result.stderr, status: result.status, error: result.spawnError }
 }
 
-/* 标准输出有且只有一行结果对象,测试统一从该行取结果 */
+/* 标准输出整段就是一个结果对象,格式化与单行两种形态都能解析 */
 export function readResult(result) {
-  const lines = (result.stdout || '').trim().split(/\r?\n/).filter(Boolean)
-  if (lines.length !== 1) {
-    throw new Error('标准输出应当只有一行,实际为 ' + lines.length + ' 行: ' + result.stdout)
-  }
-  return JSON.parse(lines[0])
+  return JSON.parse((result.stdout || '').trim())
+}
+
+/* 标准输出的行数,用于区分格式化输出与单行输出 */
+export function countLines(result) {
+  return (result.stdout || '').trim().split(/\r?\n/).filter(Boolean).length
 }

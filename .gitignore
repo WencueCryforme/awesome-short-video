@@ -16,6 +16,7 @@ video/file/
 
 # Node.js
 node_modules/
+site/.data/
 .nuxt/
 .output/
 .nitro/

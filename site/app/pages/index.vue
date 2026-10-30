@@ -1,5 +1,5 @@
 <template>
-  <div class="app-view" :class="{ 'is-booting': !urlReady }">
+  <div class="app-view" :class="{ 'is-booting': !urlReady, 'is-clear-mode': clearMode }">
     <TopNav
       :active="activeTab"
       :over-video="view === 'home'"
@@ -33,8 +33,8 @@
             :muted="muted"
             :clear-mode="clearMode"
             @toggle-mute="toggleMute"
-            @clear-screen="clearMode = true"
-            @exit-clear-screen="clearMode = false"
+            @clear-screen="enterClearMode"
+            @exit-clear-screen="exitClearMode"
           />
         </div>
       </div>
@@ -97,8 +97,9 @@
 
 <script setup lang="ts">
 import type { CatalogEntry } from '~/types/catalog'
-import { INTERACTION, SITE as site, TOPIC_QUERY_PARAM, TOPIC_QUERY_SEPARATOR } from '~/const'
+import { INTERACTION, SITE as site, TOPIC_QUERY_PARAM, TOPIC_QUERY_SEPARATOR, VIDEO_QUERY_PARAM } from '~/const'
 import { useFeedEndToast } from '~/composables/useFeedEndToast'
+import { useSharedVideoHash } from '~/composables/useSharedVideoHash'
 
 type ViewName = 'home' | 'search'
 
@@ -109,6 +110,7 @@ interface SlideHandle {
 const { entries, presetTags } = useCatalog()
 const { push } = useToast()
 const route = useRoute()
+const router = useRouter()
 const urlReady = ref(false)
 
 const selectedTopics = ref<string[]>([])
@@ -128,7 +130,9 @@ const searchQuery = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
 
 const activeIndex = ref(0)
-const muted = ref(true)
+/* 分享链接命中的条目 hash_id,生效时固定在视频流首位,取值在页面会话内共享 */
+const pinnedHashId = useSharedVideoHash()
+const { muted, toggle: toggleMute } = useMuted()
 const scrollEl = ref<HTMLElement | null>(null)
 const slideRefs = ref<Array<SlideHandle | null>>([])
 
@@ -179,11 +183,24 @@ watch(uiLocked, locked => {
 
 const feedEntries = computed(() => {
   const base = shuffledEntries.value.length ? shuffledEntries.value : entries
-  if (!topicFilter.value.length) {
-    return base
+  const sequence = !topicFilter.value.length
+    ? base
+    : base.filter(entry => topicFilter.value.some(tag => entry.tags.includes(tag)))
+
+  /* 分享链接命中的条目提到首位,被话题过滤掉时也补到首位 */
+  const target = pinnedHashId.value
+  if (!target) {
+    return sequence
   }
-  const selected = topicFilter.value
-  return base.filter(entry => selected.some(tag => entry.tags.includes(tag)))
+  const index = sequence.findIndex(entry => entry.hash_id === target)
+  if (index === 0) {
+    return sequence
+  }
+  if (index > 0) {
+    return [sequence[index], ...sequence.slice(0, index), ...sequence.slice(index + 1)]
+  }
+  const found = entries.find(entry => entry.hash_id === target)
+  return found ? [found, ...sequence] : sequence
 })
 
 function isAtFeedEnd() {
@@ -260,7 +277,7 @@ async function handleTopicDoubleClick() {
   }
   topicBubbleOpen.value = false
   view.value = 'home'
-  shuffledEntries.value = shuffleEntries(entries)
+  reshuffleFeed()
   await resetFeed()
 }
 
@@ -294,7 +311,7 @@ async function handleTab(tab: 'home' | 'topics') {
       lastHomeClickAt = 0
       topicBubbleOpen.value = false
       view.value = 'home'
-      shuffledEntries.value = shuffleEntries(entries)
+      reshuffleFeed()
       await resetFeed()
       return
     }
@@ -304,7 +321,7 @@ async function handleTab(tab: 'home' | 'topics') {
     if (!urlTopicActive.value) {
       setTopics([])
       if (hadTopics) {
-        shuffledEntries.value = shuffleEntries(entries)
+        reshuffleFeed()
       }
     }
     view.value = 'home'
@@ -331,7 +348,7 @@ function applyTopics() {
   const changed = !sameTopicSelection(draftTopics.value, selectedTopics.value)
   setTopics(draftTopics.value)
   if (changed) {
-    shuffledEntries.value = shuffleEntries(entries)
+    reshuffleFeed()
   }
   topicBubbleOpen.value = false
 }
@@ -340,7 +357,7 @@ function clearTopics() {
   const changed = selectedTopics.value.length > 0
   setTopics([])
   if (changed) {
-    shuffledEntries.value = shuffleEntries(entries)
+    reshuffleFeed()
   }
 }
 
@@ -355,6 +372,19 @@ function openDrawer() {
     applyTopics()
   }
   drawerOpen.value = true
+}
+
+/* 进入清屏时收起侧边栏与话题气泡,页面级导航随视频区域一起让位 */
+function enterClearMode() {
+  if (topicBubbleOpen.value) {
+    applyTopics()
+  }
+  drawerOpen.value = false
+  clearMode.value = true
+}
+
+function exitClearMode() {
+  clearMode.value = false
 }
 
 async function openSearch() {
@@ -408,6 +438,63 @@ function shuffleEntries(list: CatalogEntry[]) {
   return next
 }
 
+/* 打乱视频顺序,保留分享链接的首位锁定 */
+function shuffleFeed() {
+  shuffledEntries.value = shuffleEntries(entries)
+}
+
+/* 重排视频顺序并解除分享链接的首位锁定 */
+function reshuffleFeed() {
+  pinnedHashId.value = ''
+  shuffleFeed()
+}
+
+/* 从路由中取分享参数,静态预渲染页面首次挂载时可能还取不到 */
+function routeShareHashId() {
+  const raw = route.query[VIDEO_QUERY_PARAM]
+  const text = Array.isArray(raw) ? raw[0] : raw
+  return typeof text === 'string' ? text.trim() : ''
+}
+
+/*
+  分享链接的 video 参数只在首屏定位一次,
+  取值优先用路由,取不到时用页面初始化时快照的地址栏参数
+*/
+function consumeVideoParam() {
+  const hashId = routeShareHashId() || pinnedHashId.value
+  if (hashId.length > 0) {
+    pinnedHashId.value = entries.some(entry => entry.hash_id === hashId) ? hashId : ''
+  }
+  dropVideoParam()
+}
+
+/* 路由与地址栏都移除该参数,清理后重复调用无副作用 */
+function dropVideoParam() {
+  if (!import.meta.client) {
+    return
+  }
+  if (VIDEO_QUERY_PARAM in route.query) {
+    const nextQuery = { ...route.query }
+    delete nextQuery[VIDEO_QUERY_PARAM]
+    void router.replace({ path: route.path, query: nextQuery, hash: route.hash })
+    return
+  }
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has(VIDEO_QUERY_PARAM)) {
+    return
+  }
+  /* 路由尚未带上该参数时直接改写地址,避免触发一次无变化的导航 */
+  url.searchParams.delete(VIDEO_QUERY_PARAM)
+  window.history.replaceState(window.history.state, '', url.toString())
+}
+
+/* 预渲染页面挂载之后才把地址栏参数同步进路由,同步到时再消费一次 */
+watch(() => route.query[VIDEO_QUERY_PARAM], value => {
+  if (value) {
+    consumeVideoParam()
+  }
+})
+
 watch(selectedTopics, () => {
   if (view.value === 'home') {
     resetFeed()
@@ -443,10 +530,6 @@ function goRelative(offset: number) {
     return
   }
   element.scrollTo({ top: next * element.clientHeight, behavior: 'smooth' })
-}
-
-function toggleMute() {
-  muted.value = !muted.value
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -502,7 +585,8 @@ function handleKeydown(event: KeyboardEvent) {
 
 onMounted(async () => {
   urlReady.value = true
-  shuffledEntries.value = shuffleEntries(entries)
+  shuffleFeed()
+  consumeVideoParam()
   activeIndex.value = 0
   await nextTick()
   scrollEl.value?.scrollTo({ top: 0 })

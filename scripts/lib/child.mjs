@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { PROJECT_ROOT } from './cli.mjs'
+import { INLINE_ARG, PROJECT_ROOT } from './cli.mjs'
 
 /* 解析子进程标准输出最后一行的结果对象 */
 export function parseResultLine(stdout) {
@@ -23,8 +23,18 @@ export function parseResultLine(stdout) {
   return { ok: false, error: { kind: 'child', message: '子脚本输出不是约定的结果对象: ' + last } }
 }
 
-/* 子进程输出写入临时文件,避免依赖管道,兼容受限执行环境 */
-export function runChildScript(scriptPath, args = []) {
+/* 跨脚本调用统一携带 --inline,保证子脚本输出单行结果,末行解析行为不变 */
+function withInlineFlag(args) {
+  return args.includes(INLINE_ARG) ? args : [...args, INLINE_ARG]
+}
+
+/*
+ * 子进程输出写入临时文件,避免依赖管道,兼容受限执行环境
+ * options.inline 缺省为 true,只有需要观察缺省格式化输出时才显式关闭
+ */
+export function runChildScript(scriptPath, args = [], options = {}) {
+  const inline = options.inline === undefined ? true : Boolean(options.inline)
+  const childArgs = inline ? withInlineFlag(args) : [...args]
   const tempRoot = join(PROJECT_ROOT, 'temp')
   mkdirSync(tempRoot, { recursive: true })
   const token = randomUUID()
@@ -35,7 +45,7 @@ export function runChildScript(scriptPath, args = []) {
 
   let result
   try {
-    result = spawnSync(process.execPath, [scriptPath, ...args], {
+    result = spawnSync(process.execPath, [scriptPath, ...childArgs], {
       cwd: PROJECT_ROOT,
       stdio: ['ignore', outFd, errFd]
     })

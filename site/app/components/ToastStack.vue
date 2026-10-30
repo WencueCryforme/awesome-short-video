@@ -1,6 +1,6 @@
 <template>
   <div class="toast-stack" aria-live="polite" aria-atomic="false">
-    <TransitionGroup name="toast">
+    <TransitionGroup name="toast" leave-active-class="toast-leave-instant">
       <button
         v-for="item in items"
         :key="item.id"

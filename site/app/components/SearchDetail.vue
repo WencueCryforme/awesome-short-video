@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-    <div class="search-detail-layer" @click.self="close">
+    <div class="search-detail-layer" :class="{ 'is-clear-mode': clearMode }" @click.self="close">
       <div class="search-detail-shell">
         <button type="button" class="search-detail-back" aria-label="返回搜索" @click="close">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -28,7 +28,7 @@
             :should-cover="Math.abs(index - activeIndex) <= 2"
             :muted="muted"
             :clear-mode="clearMode"
-            @toggle-mute="muted = !muted"
+            @toggle-mute="toggleMute"
             @clear-screen="clearMode = true"
             @exit-clear-screen="clearMode = false"
           />
@@ -59,7 +59,7 @@ const { push } = useToast()
 const scrollEl = ref<HTMLElement | null>(null)
 const slideRefs = ref<Array<SlideHandle | null>>([])
 const activeIndex = ref(props.startIndex)
-const muted = ref(true)
+const { muted, toggle: toggleMute } = useMuted()
 const clearMode = ref(false)
 let scrollFrame = 0
 
@@ -130,7 +130,7 @@ function handleKeydown(event: KeyboardEvent) {
     event.preventDefault()
     slideRefs.value[activeIndex.value]?.togglePlay()
   } else if (event.key === 'm' || event.key === 'M') {
-    muted.value = !muted.value
+    toggleMute()
   }
 }
 

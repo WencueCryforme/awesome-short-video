@@ -4,6 +4,13 @@ import { fileURLToPath } from 'node:url'
 export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 export const DEFAULT_MANIFEST = resolve(PROJECT_ROOT, 'video', 'manifest.json')
 
+/*
+ * 输出格式选项: 全部脚本共有,与各脚本自己的选项一起解析
+ * 带该选项时结果对象压成单行,缺省时格式化输出,详见 lib/result.mjs
+ */
+export const INLINE_FLAG = 'inline'
+export const INLINE_ARG = '--' + INLINE_FLAG
+
 /* 带连字符的选项在结果对象里转成驼峰,便于直接读取 */
 function toOptionKey(name) {
   return name.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
@@ -16,7 +23,7 @@ export class CliError extends Error {}
  * 每个脚本只声明自己支持的选项,未声明的选项直接报错,避免静默忽略
  */
 export function parseArgs(argv, spec = {}) {
-  const flags = new Set(spec.flags || [])
+  const flags = new Set([...(spec.flags || []), INLINE_FLAG])
   const values = new Set(spec.values || [])
   const options = {}
   const positionals = []

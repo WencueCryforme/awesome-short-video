@@ -1,7 +1,8 @@
 import { resolve } from 'node:path'
 import { CliError, DEFAULT_MANIFEST, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument } from './lib/json-style.mjs'
-import { ENTRY_FIELDS, entryFieldProblems, isNonEmptyString } from './lib/manifest-entry.mjs'
+import { HASH_ID_FIELD, ENTRY_FIELDS, entryFieldProblems, isNonEmptyString } from './lib/manifest-entry.mjs'
+import { computeHashId } from './lib/hash-id.mjs'
 import { emitResult, makeError } from './lib/result.mjs'
 
 const { options, errors } = parseArgs(process.argv.slice(2), {
@@ -143,6 +144,28 @@ async function main() {
     structuralProblems.length === 0,
     structuralProblems.length === 0 ? '全部条目字段合法' : '存在字段非法的条目',
     structuralProblems.slice(0, 20)
+  )
+
+  /* hash_id 由条目内容推导,与内容不匹配说明未重新生成 */
+  const hashIdIssues = []
+  total.forEach((entry, index) => {
+    const stored = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry[HASH_ID_FIELD] : undefined
+    const filename = entry && typeof entry === 'object' ? entry.filename : undefined
+    if (!isNonEmptyString(stored)) {
+      hashIdIssues.push({ index, filename, problem: '缺少 ' + HASH_ID_FIELD })
+      return
+    }
+    if (stored !== computeHashId(entry)) {
+      hashIdIssues.push({ index, filename, problem: HASH_ID_FIELD + ' 与条目内容不一致' })
+    }
+  })
+  record(
+    '条目 hash_id',
+    hashIdIssues.length === 0,
+    hashIdIssues.length === 0
+      ? '全部条目的 hash_id 与内容一致'
+      : '存在 hash_id 缺失或与内容不一致的条目,运行排序脚本可重新生成',
+    hashIdIssues.slice(0, 20)
   )
 
   const seenFilenames = new Map()

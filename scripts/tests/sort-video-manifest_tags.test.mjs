@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readdir, readFile } from 'node:fs/promises'
-import { createFixture, makeEntry, makeManifest, readResult, runScript } from './helpers.mjs'
+import { computeHashId } from '../lib/hash-id.mjs'
+import { countLines, createFixture, makeEntry, makeManifest, readResult, runScript } from './helpers.mjs'
 
 function buildSortedFixture() {
   return createFixture({
@@ -45,14 +46,27 @@ test('标签文件保持零缩进逐行风格', async () => {
   assert.equal(raw, '[\n"啊",\n"爱",\n"本"\n]\n')
 })
 
-test('排序成功时标准输出只有一行结果对象', async () => {
+test('缺省输出为格式化的多行结果对象', async () => {
+  const fixture = await buildSortedFixture()
+
+  const result = runScript(
+    'sort-video-manifest_tags.mjs',
+    ['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath],
+    { inline: false }
+  )
+
+  assert.equal(countLines(result) > 1, true)
+  assert.equal(readResult(result).ok, true)
+})
+
+test('带 --inline 时排序结果输出单行', async () => {
   const fixture = await buildSortedFixture()
 
   const result = runScript('sort-video-manifest_tags.mjs', [
-    '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
+    '--inline', '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
   ])
 
-  assert.equal(result.stdout.trim().split(/\r?\n/).length, 1)
+  assert.equal(countLines(result), 1)
   assert.equal(readResult(result).ok, true)
 })
 
@@ -119,4 +133,22 @@ test('排序结果可通过校验脚本', async () => {
     '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
   ])
   assert.equal(readResult(result).ok, true)
+})
+
+test('排序结果按条目内容写入 hash_id', async () => {
+  const fixture = await buildSortedFixture()
+  const args = ['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath]
+
+  runScript('sort-video-manifest_tags.mjs', args)
+  const first = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
+  assert.equal(first.total.length, 4)
+  for (const entry of first.total) {
+    assert.equal(entry.hash_id, computeHashId(entry))
+    assert.equal(entry.hash_id.length, 16)
+  }
+
+  /* 内容未变时重复排序不改变 hash_id */
+  runScript('sort-video-manifest_tags.mjs', args)
+  const second = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
+  assert.deepEqual(second.total.map(entry => entry.hash_id), first.total.map(entry => entry.hash_id))
 })

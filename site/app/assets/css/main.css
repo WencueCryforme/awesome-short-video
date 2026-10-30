@@ -51,6 +51,8 @@ html[data-theme="light"] {
 html {
   height: 100%;
   overflow: hidden;
+  /* 关掉文档级回弹与下拉刷新,移动端不会把固定定位的飘窗一起拖动 */
+  overscroll-behavior: none;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -80,6 +82,7 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
   scrollbar-width: none;
   -ms-overflow-style: none;
   background: var(--stage-bg);
@@ -212,6 +215,13 @@ svg {
 
 .feed-slide__video.is-ready {
   opacity: 1;
+}
+
+/* 透明蒙版,压在视频之上,避免直接触发视频元素的原生悬停控件,右键菜单与拖拽 */
+.feed-slide__mask {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
 }
 
 .feed-slide__loading {
@@ -460,7 +470,7 @@ svg {
 .toast-stack {
   position: fixed;
   left: 50%;
-  top: calc(var(--nav-height) + 8px);
+  top: calc(var(--nav-height) - 4px);
   transform: translateX(-50%);
   z-index: 80;
   display: flex;
@@ -495,8 +505,7 @@ html[data-theme="light"] .toast--error {
   color: #b91c1c;
 }
 
-.toast-enter-active,
-.toast-leave-active {
+.toast-enter-active {
   transition: opacity 0.22s ease, transform 0.22s ease;
 }
 
@@ -505,9 +514,9 @@ html[data-theme="light"] .toast--error {
   transform: translateY(-12px);
 }
 
-.toast-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
+/* 换新时旧气泡立即脱离文档流,避免把新气泡向下顶 */
+.toast-leave-instant {
+  display: none;
 }
 
 html[data-theme="light"] .feed-tab.is-active {
@@ -593,6 +602,12 @@ html[data-theme="light"] .feed-empty__button {
 }
 
 .app-view.is-booting {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 清屏时顶部导航整体让位,菜单按钮,话题标签与搜索按钮都不可见也不可点 */
+.app-view.is-clear-mode .top-nav {
   visibility: hidden;
   pointer-events: none;
 }
@@ -1151,68 +1166,48 @@ html[data-theme="light"] .result-card__cover {
   background: transparent;
 }
 
-.topic-measure {
-  position: fixed;
-  top: -1000px;
-  left: -1000px;
-  display: flex;
-  gap: var(--topic-gap, 6px);
-  width: max-content;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.topic-measure .topic-chip {
-  font-weight: 600;
-}
-
+/* 气泡本体只负责外观与定位,四周留白即内边距,滚动交给内部的视区层 */
 .topic-bubble {
   position: fixed;
-  top: calc(var(--nav-height) + 10px);
+  top: calc(var(--nav-height) - 4px);
   left: 50%;
   z-index: 36;
-  display: flex;
-  flex-direction: column;
-  gap: var(--topic-gap, 6px);
   width: max-content;
   max-width: calc(var(--ui-width) - 24px);
-  max-height: 60vh;
-  overflow-y: auto;
   padding: var(--topic-padding, 10px);
-  border-radius: 14px;
+  border-radius: 7px;
   border: var(--topic-border, 1px) solid var(--panel-border);
   background: var(--panel);
   color: var(--panel-text);
   box-shadow: var(--shadow-lg);
   transform: translateX(-50%);
-  visibility: hidden;
+}
+
+/* 视区相对气泡居中,横向滚动只在这一层发生;留白由气泡内边距提供,滚动到末尾也不会消失 */
+.topic-bubble-viewport {
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 
-.topic-bubble.is-ready {
-  visibility: visible;
-}
-
-.topic-row {
-  display: flex;
-  flex-wrap: nowrap;
-  justify-content: center;
-  gap: var(--topic-gap, 6px);
-}
-
-.topic-bubble::-webkit-scrollbar {
+.topic-bubble-viewport::-webkit-scrollbar {
   display: none;
 }
 
-.topic-bubble::before {
-  content: "";
-  position: absolute;
-  top: -8px;
-  left: 50%;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 8px solid var(--panel);
-  transform: translateX(-50%);
+/* 两行标签按列优先填充,先沿列下行再向右侧换列,形成 1 3 5 与 2 4 6 的排列 */
+.topic-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(2, min-content);
+  align-items: center;
+  justify-items: stretch;
+  gap: var(--topic-gap, 6px);
+  width: max-content;
 }
 
 .topic-chip {
@@ -1223,6 +1218,7 @@ html[data-theme="light"] .result-card__cover {
   color: var(--panel-text);
   font-size: 12px;
   line-height: 1.2;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -1292,6 +1288,12 @@ html[data-theme="light"] .topic-chip.is-selected {
 .search-detail-back svg {
   width: 20px;
   height: 20px;
+}
+
+/* 详情层清屏时返回按钮随页面级导航一起让位 */
+.search-detail-layer.is-clear-mode .search-detail-back {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 @media (min-width: 760px) and (hover: hover) and (pointer: fine) {

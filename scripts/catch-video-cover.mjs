@@ -2,7 +2,7 @@
  * 从本地 video/file 目录批量捕获视频封面,产物写入 video/cover
  * 封面文件名为视频文件名(含后缀)再加 .jpg,站点按视频文件名直接拼接封面地址,封面数据不进入清单
  * 单个视频从第一帧起按固定步长逐帧判定,取第一个满足当前严苛等级全部条件的帧,取不到则退化为固定时间点的画面
- * 输出遵循 scripts/lib/result.mjs 的单行 JSON 协议,过程信息放在 data 或 error.details
+ * 输出遵循 scripts/lib/result.mjs 的 JSON 结果协议,过程信息放在 data 或 error.details
  */
 import { spawn } from 'node:child_process'
 import { closeSync, openSync } from 'node:fs'
@@ -45,7 +45,7 @@ const TEMP_DIR = resolve(PROJECT_ROOT, 'temp')
 
 /*
  * --debug 时把处理进度与判定细节写到标准错误
- * 标准输出始终只有一行结果对象,进度信息不能混进去
+ * 标准输出始终只有一个结果对象,进度信息不能混进去
  */
 let debugEnabled = false
 

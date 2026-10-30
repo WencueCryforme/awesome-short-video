@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createFixture, makeEntry, makeManifest, readResult, runScript } from './helpers.mjs'
+import { countLines, createFixture, makeEntry, makeManifest, readResult, runScript } from './helpers.mjs'
 
 function run(args) {
   return runScript('check-video-manifest.mjs', args)
@@ -23,7 +23,25 @@ test('一致清单返回成功结果且退出码为 0', async () => {
   assert.equal(payload.data.checks.every(check => check.ok), true)
 })
 
-test('标准输出有且只有一行结果对象', async () => {
+test('缺省输出为格式化的多行结果对象', async () => {
+  const fixture = await createFixture({
+    manifest: makeManifest([makeEntry({ filename: 'a.mp4' })]),
+    tags: ['爱']
+  })
+
+  const result = runScript(
+    'check-video-manifest.mjs',
+    ['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath],
+    { inline: false }
+  )
+  const payload = readResult(result)
+
+  assert.equal(countLines(result) > 1, true)
+  assert.equal(result.stdout.includes('\n  "ok": true'), true)
+  assert.equal(payload.ok, true)
+})
+
+test('带 --inline 时标准输出只有一行结果对象', async () => {
   const fixture = await createFixture({
     manifest: makeManifest([makeEntry({ filename: 'a.mp4' })]),
     tags: ['爱']
@@ -31,7 +49,8 @@ test('标准输出有且只有一行结果对象', async () => {
 
   const result = run(['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath])
 
-  assert.equal(result.stdout.trim().split(/\r?\n/).length, 1)
+  assert.equal(countLines(result), 1)
+  assert.equal(readResult(result).ok, true)
 })
 
 test('清单缺少 filesize 字段时失败', async () => {
@@ -89,6 +108,35 @@ test('source_id 为空时失败', async () => {
 
   assert.equal(payload.ok, false)
   assert.match(payload.error.message, /source_id 为空/)
+})
+
+test('条目缺少 hash_id 时失败', async () => {
+  const { hash_id: ignored, ...withoutHash } = makeEntry({ filename: 'a.mp4' })
+  const fixture = await createFixture({
+    manifest: makeManifest([withoutHash]),
+    tags: ['爱']
+  })
+
+  const payload = readResult(run(['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath]))
+
+  assert.equal(payload.ok, false)
+  assert.match(payload.error.message, /条目 hash_id/)
+  assert.match(payload.error.message, /缺少 hash_id/)
+})
+
+test('条目 hash_id 与内容不一致时失败', async () => {
+  const entry = makeEntry({ filename: 'a.mp4' })
+  entry.hash_id = '0'.repeat(16)
+  const fixture = await createFixture({
+    manifest: makeManifest([entry]),
+    tags: ['爱']
+  })
+
+  const payload = readResult(run(['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath]))
+
+  assert.equal(payload.ok, false)
+  assert.match(payload.error.message, /条目 hash_id/)
+  assert.match(payload.error.message, /不一致/)
 })
 
 test('条目出现未知字段时失败', async () => {

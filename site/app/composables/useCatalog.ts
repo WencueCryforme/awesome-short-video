@@ -6,13 +6,36 @@ interface CatalogView {
   presetTags: string[]
 }
 
-/* 清单与标签预选项由构建期注入运行时配置,站点只读取不修改 */
-export function useCatalog(): CatalogView {
-  const config = useRuntimeConfig()
-  const catalog = config.public.catalog as CatalogManifest
-  const presetTags = (config.public.tagPresets as string[]).filter(tag => typeof tag === 'string' && tag.length > 0)
+/* 构建期把清单数据写成站点根下的独立脚本,运行时由全局对象直接读取 */
+interface CatalogPayload {
+  catalog?: CatalogManifest
+  tagPresets?: string[]
+}
 
-  const entries = (catalog.total || []).filter(entry => entry && entry.filename)
+/* 服务端预渲染读私有运行时配置,客户端读构建期脚本写入的全局对象 */
+function readCatalogSource(): CatalogPayload {
+  if (import.meta.server) {
+    const config = useRuntimeConfig()
+    return {
+      catalog: config.catalog as CatalogManifest,
+      tagPresets: config.tagPresets as string[]
+    }
+  }
+
+  const payload = (globalThis as { __CATALOG__?: CatalogPayload }).__CATALOG__
+  if (!payload) {
+    console.warn('未读到构建期清单数据,请确认页面已引入清单数据脚本')
+    return {}
+  }
+
+  return payload
+}
+
+/* 清单与标签预选项在构建期生成,站点只读取不修改 */
+export function useCatalog(): CatalogView {
+  const source = readCatalogSource()
+  const presetTags = (source.tagPresets || []).filter(tag => typeof tag === 'string' && tag.length > 0)
+  const entries = (source.catalog?.total ?? []).filter(entry => entry && entry.filename)
 
   return { entries, presetTags }
 }
