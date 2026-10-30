@@ -1,4 +1,6 @@
-import { readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { tempFilePathFor } from './fs-util.mjs'
 
 /* 识别原文件的换行,缩进与结尾换行,写回时保持既有排版风格 */
 export function detectStyle(raw) {
@@ -24,7 +26,53 @@ function inlineTagsArrays(body) {
   })
 }
 
+/* 标量对象序列化成单行文本,用于 hash_id 这类记录数组 */
+function compactObjectText(item) {
+  const parts = Object.keys(item).map(key => JSON.stringify(key) + ': ' + JSON.stringify(item[key]))
+  return '{' + parts.join(', ') + '}'
+}
+
+/* 判断数组能否压成单行: 每项都是键值均为字符串的扁平对象 */
+function isCompactableArray(value) {
+  return value.length > 0 && value.every((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return false
+    }
+    return Object.values(item).every(part => typeof part === 'string')
+  })
+}
+
+/*
+ * 把指定字段的对象数组替换成占位符,序列化后再换回单行文本
+ * 占位符只含字母与 @,JSON.stringify 不会转义,替换时不会误伤其它内容
+ */
+function replaceCompactArrays(value, fields, compacted) {
+  if (Array.isArray(value)) {
+    return value.map(item => replaceCompactArrays(item, fields, compacted))
+  }
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+
+  const next = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (fields.includes(key) && Array.isArray(item) && isCompactableArray(item)) {
+      const token = '@@COMPACT_ARRAY_' + compacted.length + '@@'
+      compacted.push('[' + item.map(compactObjectText).join(', ') + ']')
+      next[key] = token
+      continue
+    }
+    next[key] = replaceCompactArrays(item, fields, compacted)
+  }
+
+  return next
+}
+
 export function formatJsonDocument(value, style, options = {}) {
+  const compactFields = Array.isArray(options.compactArraysFor) ? options.compactArraysFor : []
+  const compacted = []
+  const prepared = compactFields.length > 0 ? replaceCompactArrays(value, compactFields, compacted) : value
+
   let body
 
   /* 零缩进的字符串数组按每行一项输出,保持标签文件的既有风格 */
@@ -33,10 +81,14 @@ export function formatJsonDocument(value, style, options = {}) {
       + value.map(item => JSON.stringify(item)).join(',' + style.newline)
       + style.newline + ']'
   } else {
-    body = JSON.stringify(value, null, style.indent || 0)
+    body = JSON.stringify(prepared, null, style.indent || 0)
     if (options.inlineTags) {
       body = inlineTagsArrays(body)
     }
+    /* 记录数组恢复为单行,每个条目仍独占一行 */
+    compacted.forEach((text, index) => {
+      body = body.split('"@@COMPACT_ARRAY_' + index + '@@"').join(text)
+    })
     if (style.newline === '\r\n') {
       body = body.replace(/\n/g, '\r\n')
     }
@@ -49,9 +101,10 @@ export async function writeJsonDocument(filePath, value, style, options = {}) {
   await writeFile(filePath, formatJsonDocument(value, style, options), 'utf8')
 }
 
-/* 先写同目录临时文件再改名,避免写入中途失败时留下半个文件 */
+/* 先把内容写到目标目录下 temp 子目录的中间文件,再改名到目标,避免写入中途失败留下半个文件 */
 export async function writeJsonDocumentAtomic(filePath, value, style, options = {}) {
-  const tempPath = filePath + '.writing'
+  const tempPath = tempFilePathFor(filePath, '.writing')
+  await mkdir(dirname(tempPath), { recursive: true })
   await writeFile(tempPath, formatJsonDocument(value, style, options), 'utf8')
   await rename(tempPath, filePath)
 }

@@ -1,18 +1,18 @@
 import { fileURLToPath } from 'node:url'
-import { basename, dirname, join, resolve } from 'node:path'
-import { copyFile, readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { DEFAULT_MANIFEST, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument, writeJsonDocumentAtomic } from './lib/json-style.mjs'
-import { withHashId } from './lib/hash-id.mjs'
+import { ensureHashId } from './lib/hash-id.mjs'
 import { compareEntries, sortByPinyin } from './lib/pinyin-sort.mjs'
 import { runChildScript } from './lib/child.mjs'
-import { removeQuietly } from './lib/fs-util.mjs'
+import { removeQuietly, tempFilePathFor } from './lib/fs-util.mjs'
 import { emitResult, makeError } from './lib/result.mjs'
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url)
 const CHECK_SCRIPT = resolve(dirname(SCRIPT_PATH), 'check-video-manifest.mjs')
 const { options, errors } = parseArgs(process.argv.slice(2), {
-  flags: ['check'],
+  flags: ['check', 'force'],
   values: ['manifest', 'tags']
 })
 const steps = []
@@ -23,10 +23,6 @@ function succeed(data) {
 
 function fail(kind, message, details) {
   emitResult({ ok: false, error: makeError(message, kind, details) })
-}
-
-function tempPathFor(filePath) {
-  return join(dirname(filePath), basename(filePath, '.json') + '.temp.json')
 }
 
 async function sortDocuments(manifestPath, tagsPath) {
@@ -41,14 +37,14 @@ async function sortDocuments(manifestPath, tagsPath) {
   }
 
   const sortedTags = sortByPinyin(tagsDocument.value)
-  /* 标签先排序再算 hash_id,保证同样的内容得到同样的摘要 */
+  /* 标签先排序再确定 hash_id,新条目按排好序的标签计算,已有条目默认沿用以保持分享链接稳定 */
   const sortedTotal = manifestDocument.value.total
     .map((entry) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
         return entry
       }
       const tags = Array.isArray(entry.tags) ? sortByPinyin(entry.tags) : []
-      return withHashId({ ...entry, tags })
+      return ensureHashId({ ...entry, tags }, { force: options.force === true })
     })
     .sort(compareEntries)
 
@@ -72,13 +68,15 @@ async function runCheckMode(manifestPath, tagsPath) {
   }
   steps.push({ action: '原始文件校验', ok: true })
 
-  const tempManifest = tempPathFor(manifestPath)
-  const tempTags = tempPathFor(tagsPath)
+  const tempManifest = tempFilePathFor(manifestPath, '.temp.json')
+  const tempTags = tempFilePathFor(tagsPath, '.temp.json')
 
   try {
     const beforeManifest = await readFile(manifestPath)
     const beforeTags = await readFile(tagsPath)
 
+    /* 临时副本放在同目录的 temp 子目录,子目录可能不存在,先建再复制 */
+    await mkdir(dirname(tempManifest), { recursive: true })
     await copyFile(manifestPath, tempManifest)
     await copyFile(tagsPath, tempTags)
     steps.push({ action: '生成临时副本', ok: true, files: [tempManifest, tempTags] })

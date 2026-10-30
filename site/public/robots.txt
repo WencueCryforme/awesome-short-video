@@ -1,5 +1,0 @@
-# 站点只有一个可索引地址,地址变更时需同时更新本文件与 sitemap.xml
-User-agent: *
-Allow: /
-
-Sitemap: https://wencuecryforme.github.io/awesome-short-video/sitemap.xml

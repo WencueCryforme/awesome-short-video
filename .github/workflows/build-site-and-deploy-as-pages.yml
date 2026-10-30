@@ -43,6 +43,9 @@ jobs:
       - name: Validate video manifest
         run: node scripts/check-video-manifest.mjs
 
+      - name: Check manifest history
+        run: node scripts/try2-update-manifest-his.mjs --check
+
       - name: Run script tests
         run: npm test
 

@@ -18,21 +18,27 @@ scripts/
 │   ├── hash-id.mjs                 # 条目 hash_id 计算
 │   ├── json-style.mjs              # JSON 排版风格识别与写回
 │   ├── manifest-entry.mjs          # 条目字段定义与表单转换
+│   ├── manifest-his.mjs            # 清单历史文件读写与新旧条目配对
 │   ├── pinyin-sort.mjs             # 拼音排序
 │   ├── result.mjs                  # 结果输出协议
+│   ├── similarity.mjs              # 条目相似度与编辑距离
 │   └── version.mjs                 # 版本号读取与日期换算
 ├── tests/                          # 脚本测试
 │   ├── build-single-video-pages.test.mjs
 │   ├── check-video-manifest.test.mjs
 │   ├── helpers.mjs
+│   ├── merge-into-manifest-his.test.mjs
 │   ├── sort-video-manifest_tags.test.mjs
-│   └── sync-version.test.mjs
+│   ├── sync-version.test.mjs
+│   └── try2-update-manifest-his.test.mjs
 ├── add-new-video-reaction.mjs      # 图形界面新增条目
 ├── build-single-video-pages.mjs    # 逐视频静态页生成
 ├── catch-video-cover.mjs           # 批量捕获视频封面
 ├── check-video-manifest.mjs        # 清单校验
+├── merge-into-manifest-his.mjs     # 手工指定历史条目配对
 ├── sort-video-manifest_tags.mjs    # 清单排序
-└── sync-version.mjs                # 版本号同步与校验
+├── sync-version.mjs                # 版本号同步与校验
+└── try2-update-manifest-his.mjs    # 清单历史文件同步
 ```
 
 ## 输出协议
@@ -63,14 +69,17 @@ node scripts/check-video-manifest.mjs --manifest video/manifest.json --tags vide
 | `--manifest <path>` | 待校验清单,缺省为 `video/manifest.json` |
 | `--tags <path>` | 标签预选项文件,缺省由清单 `tags` 字段相对解析 |
 
-检查项包含读取清单,清单结构,清单字段,条目集合,空模板字段,条目字段,条目 hash_id,文件名唯一,解析标签文件,读取标签文件,标签预选项结构,标签预选项合法,条目标签在预选项内。空模板字段要求 `blank` 的键与条目字段集合完全一致。失败时 `error.message` 给出首个失败项与具体问题,`error.details.checks` 给出全部检查项。
+检查项包含读取清单,清单结构,清单字段,条目集合,空模板字段,条目字段,条目 hash_id,条目 hash_id 唯一,文件名唯一,解析标签文件,读取标签文件,标签预选项结构,标签预选项合法,条目标签在预选项内。空模板字段要求 `blank` 的键与条目字段集合完全一致。失败时 `error.message` 给出首个失败项与具体问题,`error.details.checks` 给出全部检查项。
+
+`hash_id` 缺失,格式非法或重复都按硬失败处理;条目内容与 `hash_id` 对应的摘要不一致只写入 `data.warnings`,退出码仍为 0,因为 `hash_id` 首次分配后不再重算,内容变化属于正常编辑。
 
 ## sort-video-manifest_tags.mjs
 
-按拼音重排标签预选项与每个条目的标签数组,并按标签数组与标题重排条目,同时按条目内容重写每个条目的 `hash_id`。
+按拼音重排标签预选项与每个条目的标签数组,并按标签数组与标题重排条目;缺少 `hash_id` 的条目按排序后的内容补算,已有 `hash_id` 默认沿用以保持分享链接稳定。
 
 ```bash
 node scripts/sort-video-manifest_tags.mjs
+node scripts/sort-video-manifest_tags.mjs --force
 node scripts/sort-video-manifest_tags.mjs --check
 node scripts/sort-video-manifest_tags.mjs --check --manifest video/manifest.json --tags video/tags.json
 ```
@@ -78,6 +87,7 @@ node scripts/sort-video-manifest_tags.mjs --check --manifest video/manifest.json
 | 参数 | 说明 |
 |:---:|:---:|
 | `--check` | 只读比对: 复制出临时文件对其排序并校验,结果与原文件不一致时报错,始终不写回原文件 |
+| `--force` | 按当前内容强制重算全部 `hash_id`,已有分享链接与已收录页面随之失效 |
 | `--manifest <path>` | 待排序清单,缺省为 `video/manifest.json` |
 | `--tags <path>` | 标签预选项文件,缺省由清单 `tags` 字段相对解析 |
 
@@ -85,13 +95,63 @@ node scripts/sort-video-manifest_tags.mjs --check --manifest video/manifest.json
 
 ## 条目 hash_id
 
-清单每个条目带有 `hash_id`,供站点分享链接定位条目,由脚本生成,人工不维护。
+清单每个条目带有 `hash_id`,供站点分享链接与逐视频页面定位条目,由脚本生成,人工不维护。
 
 - 计算范围是条目自身的全部字段,计算前排除 `hash_id` 字段本身
 - 计算前对条目内容做行压缩,去掉缩进与无用空白,保证同一内容得到同一结果
 - 对压缩后的内容取 sha-512,转十六进制后截取前 16 个字符
-- `sort-video-manifest_tags.mjs` 写回时统一重算,`check-video-manifest.mjs` 只读重算并核对,两者共用 `scripts/lib/hash-id.mjs`
-- 条目内容变化时 `hash_id` 随之变化,早先发出的分享链接因此失效,属于预期行为
+- 首次分配: 缺少 `hash_id` 的条目在排序时按当时的内容算出一个并写回清单
+- 此后保守沿用: 条目内容变化时 `hash_id` 保持不变,早先发出的分享链接与已收录页面继续有效;确实需要重算时显式带 `--force`
+- `check-video-manifest.mjs` 只校验格式与唯一性,内容与摘要不一致只作提示,两者共用 `scripts/lib/hash-id.mjs`
+
+## 清单历史文件
+
+`video/manifest.his.json` 与清单同结构,另加 `archived` 数组,用于留存条目历次登记的 `hash_id` 以及已删除条目的完整快照。该文件由脚本维护,人工不直接编辑。
+
+- 每个条目的 `hash_id` 是数组,每项形如 `{"id": "...", "date": "yyyy.MM.dd"}`,`date` 为该 id 的登记日期,登记后不再更新
+- `total` 按清单顺序记录当前条目,`archived` 记录已从清单删除的条目,每项带 `removedDate`
+- 新增条目与内容大幅改写后新旧条目无法自动配对时,先由 `try2-update-manifest-his.mjs` 报冲突,再由 `merge-into-manifest-his.mjs` 人工指定配对
+- 自动配对分三步: 先按文件名完全一致配对,再按条目字段拼接文本的相似度配对,相似度不足阈值或最优结果不唯一时一律留给人工
+- 相似度阈值由 `scripts/lib/similarity.mjs` 的 `SIMILARITY_THRESHOLD` 定义,当前 `0.6`;新增条目的重复判定与历史配对共用该值,调整只改这一处
+
+## try2-update-manifest-his.mjs
+
+把清单与历史文件比对,写回更新后的历史文件。默认在写盘前拦住需要人工判定的情形,带 `--check` 时只比对不写文件。
+
+```bash
+node scripts/try2-update-manifest-his.mjs
+node scripts/try2-update-manifest-his.mjs --check
+node scripts/try2-update-manifest-his.mjs --accept-new 157cfa275e9d4ac5
+```
+
+| 参数 | 说明 |
+|:---:|:---:|
+| `--check` | 只比对,历史文件缺失或与清单不一致时以 `kind` 为 `his` 失败 |
+| `--accept-new <hash_id>` | 声明该 hash_id 是新条目,登记日期取当前 `VERSION`,可重复给出 |
+| `--bootstrap` | 历史文件缺失时按清单建立基线,缺省在历史文件不存在时同样按基线处理 |
+| `--manifest <path>` | 清单路径,缺省为 `video/manifest.json` |
+| `--his <path>` | 历史文件路径,缺省为清单同目录的 `manifest.his.json` |
+
+配对结果分四类: 命中已有历史条目,声明或自动登记的新 id,从清单删除因而归档的条目,以及无法判定需要人工处理的条目。清单里有条目缺少合法 `hash_id` 时直接失败,提示先运行排序脚本。
+
+## merge-into-manifest-his.mjs
+
+按 `--old` 与 `--new` 成对给出人工配对,解决 `try2-update-manifest-his.mjs` 报出的冲突,冲突清零后才写盘。脚本不做交互,反复运行并逐次补齐配对即可。
+
+```bash
+node scripts/merge-into-manifest-his.mjs
+node scripts/merge-into-manifest-his.mjs --old 157cfa275e9d4ac5 --new 8d8aba8d6c4c8891
+node scripts/merge-into-manifest-his.mjs --old none --new 8d8aba8d6c4c8891
+```
+
+| 参数 | 说明 |
+|:---:|:---:|
+| `--old <hash_id>` | 历史文件里的旧 id,取 `none` 表示该新条目没有历史记录,可重复给出 |
+| `--new <hash_id>` | 清单里的新 id,必须已存在于清单,可重复给出 |
+| `--manifest <path>` | 清单路径,缺省为 `video/manifest.json` |
+| `--his <path>` | 历史文件路径,缺省为清单同目录的 `manifest.his.json` |
+
+`--old` 与 `--new` 数量必须相等,按下标成对生效。配对成功时旧 id 的历史记录保留,新 id 追加在后并记上当前 `VERSION` 的登记日期;未被配对的旧条目按删除处理,连同元信息快照一并转入 `archived`。
 
 ## add-new-video-reaction.mjs
 
@@ -144,7 +204,7 @@ node scripts/catch-video-cover.mjs --td 8
 
 ## build-single-video-pages.mjs
 
-在构建期把清单里的每条视频渲染为独立静态页,写入站点产物目录,仓库内不保留生成结果。页面自带原生 `video` 控件直接播放对象存储中的文件,并提供返回主页面的入口,便于搜索引擎为每条视频单独建立索引。
+在构建期把清单里的每条视频渲染为独立静态页,写入站点产物目录,仓库内不保留生成结果。页面自带原生 `video` 控件直接播放对象存储中的文件,并提供来源链接,分享链接复制按钮与返回主页面的入口,便于搜索引擎为每条视频单独建立索引。历史文件里已归档的条目渲染为下架提示页,地址继续有效但不再提供播放,这类页面不进站点地图。
 
 ```bash
 node scripts/build-single-video-pages.mjs
@@ -158,9 +218,14 @@ node scripts/build-single-video-pages.mjs --out site/.output/public
 | `--single <hash_id>` | 只生成该条目对应的页面,不改写 `sitemap.xml`,取值必须是 16 位小写十六进制 |
 | `--out <path>` | 站点产物目录,缺省为 `site/.output/public`,相对路径按当前工作目录解析 |
 | `--manifest <path>` | 待读取清单,缺省为 `video/manifest.json` |
+| `--his <path>` | 清单历史文件,缺省为清单同目录的 `manifest.his.json`,文件不存在时按无归档处理 |
 | `--check` | 只校验与渲染,不写文件 |
 
-页面路径为 `video/<hash_id>/index.html`,站点地图为 `sitemap.xml`,收录站点首页与全部逐视频页面。产物目录不存在时直接报错,需先执行 `npm run generate`;条目 `hash_id` 与内容不一致时同样报错,需先执行排序脚本。页面里的站点名称,绝对地址,作者与对象存储基地址取自 `site/app/const.ts`,版本号取自仓库根目录的 `VERSION` 文件,必须是 `yyyy.MM.dd` 格式。
+页面路径为 `video/<hash_id>/index.html`,站点地图为 `sitemap.xml`,收录站点首页与全部逐视频页面(不含下架页);全量运行同时写出 `robots.txt`,其 `Sitemap` 行与站点地图地址一致,两者都取自 `site/app/const.ts` 的 `siteUrl`。产物目录不存在时直接报错,需先执行 `npm run generate`;条目缺少合法 `hash_id` 时同样报错,需先执行排序脚本。页面里的站点名称,绝对地址,作者与对象存储基地址取自 `site/app/const.ts`,版本号取自仓库根目录的 `VERSION` 文件,必须是 `yyyy.MM.dd` 格式。
+
+日期分工: 构建日期取 `VERSION`,更新日期取历史文件里该 `hash_id` 的登记日期,两者相同时只显示更新日期,显示形态在生成时决定。页面分享按钮复制页面自身的地址,提示文字写在页内,不使用浏览器原生弹窗。
+
+页脚依次给出作者链接,站点入口与仓库链接,标题,副标题,描述,站点绝对地址,作者名称与链接,仓库地址,对象存储基地址,封面目录与后缀,版权年份全部在生成期从 `site/app/const.ts` 的 `SITE` 常量读取,更换作者或仓库只改该文件;任取不到即报错,不会静默产出残缺页面。
 
 ## sync-version.mjs
 

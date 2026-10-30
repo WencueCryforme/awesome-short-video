@@ -6,8 +6,12 @@ import { fileURLToPath } from 'node:url'
 import { DEFAULT_MANIFEST, PROJECT_ROOT, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument, writeJsonDocument } from './lib/json-style.mjs'
 import { buildEntry } from './lib/manifest-entry.mjs'
+import { primaryHashId } from './lib/hash-id.mjs'
+import { conflictsOf, defaultHisPath, planHisUpdate, readHisDocument, writeHisDocument } from './lib/manifest-his.mjs'
+import { SIMILARITY_THRESHOLD, bestSimilarEntry } from './lib/similarity.mjs'
+import { readVersion } from './lib/version.mjs'
 import { runChildScript } from './lib/child.mjs'
-import { removeQuietly, replaceFile } from './lib/fs-util.mjs'
+import { removeQuietly, replaceFile, tempFilePathFor } from './lib/fs-util.mjs'
 import { emitResult, makeError } from './lib/result.mjs'
 
 /*
@@ -20,7 +24,6 @@ const SCRIPT_DIR = dirname(SCRIPT_PATH)
 const GUI_DIR = join(SCRIPT_DIR, 'gui', 'add-video-reaction')
 const SORT_SCRIPT = join(SCRIPT_DIR, 'sort-video-manifest_tags.mjs')
 const CHECK_SCRIPT = join(SCRIPT_DIR, 'check-video-manifest.mjs')
-const TEMP_DIR = join(PROJECT_ROOT, 'temp')
 
 const STATIC_FILES = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -113,12 +116,24 @@ async function performAdd(form) {
     }
   }
 
-  const tempManifest = join(dirname(manifestPath), 'manifest.temp.json')
-  const tempTags = join(TEMP_DIR, 'tags.temp.json')
-  const temporaryFiles = [tempManifest, tempTags]
+  /* 文件名不同但内容相近时同样视为重复,避免同一段视频以两个 hash_id 重复收录 */
+  const similar = bestSimilarEntry(entry, total)
+  if (similar && similar.score >= SIMILARITY_THRESHOLD) {
+    const score = Number(similar.score.toFixed(3))
+    return {
+      ok: false,
+      error: makeError('清单已存在内容相近的条目: ' + similar.entry.title + ',相似度 ' + score, 'duplicate', { field: 'title', filename: similar.entry.filename, score })
+    }
+  }
+
+  const hisPath = defaultHisPath(manifestPath)
+  const tempManifest = tempFilePathFor(manifestPath, '.temp.json')
+  const tempTags = tempFilePathFor(tagsPath, '.temp.json')
+  const tempHis = tempFilePathFor(hisPath, '.temp.json')
+  const temporaryFiles = [tempManifest, tempTags, tempHis]
 
   try {
-    await mkdir(TEMP_DIR, { recursive: true })
+    await mkdir(dirname(tempManifest), { recursive: true })
     await copyFile(manifestPath, tempManifest)
     await copyFile(tagsPath, tempTags)
 
@@ -142,10 +157,35 @@ async function performAdd(form) {
       }
     }
 
-    /* 排序脚本同时规范化了标签顺序,两份结果一起写回,避免清单与标签文件的排序状态不一致 */
+    /* 排序脚本给出新条目的 hash_id,先登记进历史文件再与清单一起提交,避免历史文件落后于清单 */
+    const sortedDocument = await readJsonDocument(tempManifest)
+    const sortedTotal = Array.isArray(sortedDocument.value.total) ? sortedDocument.value.total : []
+    const sortedEntry = sortedTotal.find(item => item && item.filename === entry.filename)
+    const hashId = sortedEntry ? primaryHashId(sortedEntry) : ''
+    if (hashId === '') {
+      return {
+        ok: false,
+        error: makeError('排序结果缺少条目 hash_id: ' + entry.filename, 'sort')
+      }
+    }
+
+    const version = await readVersion()
+    const hisDocument = await readHisDocument(hisPath)
+    const planned = planHisUpdate(sortedDocument.value, hisDocument.value, { version, acceptNew: [hashId] })
+    const conflicts = conflictsOf(planned.report)
+    if (conflicts.length > 0) {
+      return {
+        ok: false,
+        error: makeError('历史文件存在 ' + conflicts.length + ' 处无法自动判定的冲突,请先运行 node scripts/merge-into-manifest-his.mjs 处理', 'conflict', { conflicts })
+      }
+    }
+    await writeHisDocument(tempHis, planned.value, hisDocument.style)
+
+    /* 排序脚本同时规范化了标签顺序,三份结果一起写回,避免清单,标签文件与历史文件互相不一致 */
     await replaceFile(tempManifest, manifestPath)
     await replaceFile(tempTags, tagsPath)
-    added.push({ title: entry.title, filename: entry.filename })
+    await replaceFile(tempHis, hisPath)
+    added.push({ title: entry.title, filename: entry.filename, hashId })
 
     return {
       ok: true,

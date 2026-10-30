@@ -124,7 +124,7 @@ test('条目缺少 hash_id 时失败', async () => {
   assert.match(payload.error.message, /缺少 hash_id/)
 })
 
-test('条目 hash_id 与内容不一致时失败', async () => {
+test('条目 hash_id 与内容不一致时只给提示不失败', async () => {
   const entry = makeEntry({ filename: 'a.mp4' })
   entry.hash_id = '0'.repeat(16)
   const fixture = await createFixture({
@@ -134,9 +134,26 @@ test('条目 hash_id 与内容不一致时失败', async () => {
 
   const payload = readResult(run(['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath]))
 
+  assert.equal(payload.ok, true)
+  assert.equal(payload.data.warnings.length, 1)
+  assert.equal(payload.data.warnings[0].name, '条目内容已变更')
+  assert.match(payload.data.warnings[0].message, /hash_id 保持首次分配的值/)
+})
+
+test('条目 hash_id 重复时失败', async () => {
+  const first = makeEntry({ filename: 'a.mp4' })
+  const second = makeEntry({ filename: 'b.mp4' })
+  second.hash_id = first.hash_id
+  const fixture = await createFixture({
+    manifest: makeManifest([first, second]),
+    tags: ['爱']
+  })
+
+  const payload = readResult(run(['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath]))
+
   assert.equal(payload.ok, false)
-  assert.match(payload.error.message, /条目 hash_id/)
-  assert.match(payload.error.message, /不一致/)
+  assert.match(payload.error.message, /条目 hash_id 唯一/)
+  assert.match(payload.error.message, /存在重复 hash_id/)
 })
 
 test('条目出现未知字段时失败', async () => {

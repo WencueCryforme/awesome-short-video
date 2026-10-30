@@ -135,20 +135,52 @@ test('排序结果可通过校验脚本', async () => {
   assert.equal(readResult(result).ok, true)
 })
 
-test('排序结果按条目内容写入 hash_id', async () => {
-  const fixture = await buildSortedFixture()
-  const args = ['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath]
+test('排序结果为缺少 hash_id 的条目补算', async () => {
+  const { hash_id: ignored, ...withoutHash } = makeEntry({ title: '甲', filename: 'a.mp4', tags: ['本'] })
+  const fixture = await createFixture({
+    manifest: makeManifest([withoutHash]),
+    tags: ['本']
+  })
 
-  runScript('sort-video-manifest_tags.mjs', args)
-  const first = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
-  assert.equal(first.total.length, 4)
-  for (const entry of first.total) {
-    assert.equal(entry.hash_id, computeHashId(entry))
-    assert.equal(entry.hash_id.length, 16)
-  }
+  runScript('sort-video-manifest_tags.mjs', ['--manifest', fixture.manifestPath, '--tags', fixture.tagsPath])
+  const manifest = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
+  const entry = manifest.total[0]
 
-  /* 内容未变时重复排序不改变 hash_id */
-  runScript('sort-video-manifest_tags.mjs', args)
-  const second = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
-  assert.deepEqual(second.total.map(entry => entry.hash_id), first.total.map(entry => entry.hash_id))
+  assert.equal(entry.hash_id, computeHashId(entry))
+  assert.equal(entry.hash_id.length, 16)
+})
+
+test('已有 hash_id 默认保留,内容变更后仍不重算', async () => {
+  const entry = makeEntry({ title: '甲', filename: 'a.mp4', tags: ['本'] })
+  const originalHashId = entry.hash_id
+  const fixture = await createFixture({
+    manifest: makeManifest([{ ...entry, title: '甲改名' }]),
+    tags: ['本']
+  })
+
+  const payload = readResult(runScript('sort-video-manifest_tags.mjs', [
+    '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
+  ]))
+  assert.equal(payload.ok, true)
+
+  const manifest = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
+  assert.equal(manifest.total[0].hash_id, originalHashId)
+  assert.notEqual(originalHashId, computeHashId(manifest.total[0]))
+})
+
+test('带 --force 时按当前内容重算 hash_id', async () => {
+  const entry = makeEntry({ title: '甲', filename: 'a.mp4', tags: ['本'] })
+  const originalHashId = entry.hash_id
+  const fixture = await createFixture({
+    manifest: makeManifest([{ ...entry, title: '甲改名' }]),
+    tags: ['本']
+  })
+
+  runScript('sort-video-manifest_tags.mjs', [
+    '--force', '--manifest', fixture.manifestPath, '--tags', fixture.tagsPath
+  ])
+
+  const manifest = JSON.parse(await readFile(fixture.manifestPath, 'utf8'))
+  assert.notEqual(manifest.total[0].hash_id, originalHashId)
+  assert.equal(manifest.total[0].hash_id, computeHashId(manifest.total[0]))
 })

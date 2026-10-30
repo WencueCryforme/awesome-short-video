@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node scripts/tests/check-video-manifest.test.mjs && node scripts/tests/sort-video-manifest_tags.test.mjs && node scripts/tests/build-single-video-pages.test.mjs && node scripts/tests/sync-version.test.mjs",
+    "test": "node scripts/tests/check-video-manifest.test.mjs && node scripts/tests/sort-video-manifest_tags.test.mjs && node scripts/tests/build-single-video-pages.test.mjs && node scripts/tests/sync-version.test.mjs && node scripts/tests/try2-update-manifest-his.test.mjs && node scripts/tests/merge-into-manifest-his.test.mjs",
     "check:manifest": "node scripts/check-video-manifest.mjs",
     "sort:manifest": "node scripts/sort-video-manifest_tags.mjs",
     "addnew": "node scripts/add-new-video-reaction.mjs",
     "cover": "node scripts/catch-video-cover.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
-    "version:sync": "node scripts/sync-version.mjs"
+    "version:sync": "node scripts/sync-version.mjs",
+    "his:check": "node scripts/try2-update-manifest-his.mjs --check",
+    "his:update": "node scripts/try2-update-manifest-his.mjs"
   }
 }

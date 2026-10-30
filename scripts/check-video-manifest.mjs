@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { CliError, DEFAULT_MANIFEST, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument } from './lib/json-style.mjs'
 import { HASH_ID_FIELD, ENTRY_FIELDS, entryFieldProblems, isNonEmptyString } from './lib/manifest-entry.mjs'
-import { computeHashId } from './lib/hash-id.mjs'
+import { computeHashId, isHashId } from './lib/hash-id.mjs'
 import { emitResult, makeError } from './lib/result.mjs'
 
 const { options, errors } = parseArgs(process.argv.slice(2), {
@@ -10,6 +10,7 @@ const { options, errors } = parseArgs(process.argv.slice(2), {
   values: ['manifest', 'tags']
 })
 const checks = []
+const warnings = []
 
 function record(name, ok, message, details) {
   const item = { name, ok, message }
@@ -47,7 +48,7 @@ function finish(fatal) {
   const passed = checks.length > 0 && checks.every(item => item.ok)
 
   if (passed) {
-    emitResult({ ok: true, data: { manifest: currentManifestPath, checks } })
+    emitResult({ ok: true, data: { manifest: currentManifestPath, checks, warnings } })
     return
   }
 
@@ -58,7 +59,7 @@ function finish(fatal) {
     error: makeError(
       failed[0].name + ': ' + failed[0].message + (summary ? '(' + summary + ')' : ''),
       'manifest',
-      { manifest: currentManifestPath, failed: failed.map(item => item.name), checks }
+      { manifest: currentManifestPath, failed: failed.map(item => item.name), checks, warnings }
     )
   })
 }
@@ -146,8 +147,9 @@ async function main() {
     structuralProblems.slice(0, 20)
   )
 
-  /* hash_id 由条目内容推导,与内容不匹配说明未重新生成 */
+  /* hash_id 首次分配后保持稳定,内容变更不再重算,这类差异只作为提示不阻塞校验 */
   const hashIdIssues = []
+  const contentDrift = []
   total.forEach((entry, index) => {
     const stored = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry[HASH_ID_FIELD] : undefined
     const filename = entry && typeof entry === 'object' ? entry.filename : undefined
@@ -155,17 +157,48 @@ async function main() {
       hashIdIssues.push({ index, filename, problem: '缺少 ' + HASH_ID_FIELD })
       return
     }
-    if (stored !== computeHashId(entry)) {
-      hashIdIssues.push({ index, filename, problem: HASH_ID_FIELD + ' 与条目内容不一致' })
+    if (!isHashId(stored)) {
+      hashIdIssues.push({ index, filename, problem: HASH_ID_FIELD + ' 不是 16 位小写十六进制' })
+      return
+    }
+    const contentHashId = computeHashId(entry)
+    if (stored !== contentHashId) {
+      contentDrift.push({ index, filename, hashId: stored, contentHashId })
     }
   })
   record(
     '条目 hash_id',
     hashIdIssues.length === 0,
-    hashIdIssues.length === 0
-      ? '全部条目的 hash_id 与内容一致'
-      : '存在 hash_id 缺失或与内容不一致的条目,运行排序脚本可重新生成',
+    hashIdIssues.length === 0 ? '全部条目的 hash_id 合法' : '存在 hash_id 缺失或格式非法的条目',
     hashIdIssues.slice(0, 20)
+  )
+
+  if (contentDrift.length > 0) {
+    warnings.push({
+      name: '条目内容已变更',
+      message: contentDrift.length + ' 个条目的内容与 hash_id 对应的摘要不一致,hash_id 保持首次分配的值,分享链接与已收录页面不受影响',
+      details: contentDrift.slice(0, 20)
+    })
+  }
+
+  const seenHashIds = new Map()
+  const duplicateHashIds = []
+  total.forEach((entry, index) => {
+    const stored = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry[HASH_ID_FIELD] : undefined
+    if (!isNonEmptyString(stored)) {
+      return
+    }
+    if (seenHashIds.has(stored)) {
+      duplicateHashIds.push({ hashId: stored, indexes: [seenHashIds.get(stored), index] })
+    } else {
+      seenHashIds.set(stored, index)
+    }
+  })
+  record(
+    '条目 hash_id 唯一',
+    duplicateHashIds.length === 0,
+    duplicateHashIds.length === 0 ? 'hash_id 无重复' : '存在重复 hash_id',
+    duplicateHashIds.slice(0, 20)
   )
 
   const seenFilenames = new Map()

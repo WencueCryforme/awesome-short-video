@@ -53,7 +53,7 @@
           </section>
 
           <footer class="drawer__footer">
-            <p>版本 {{ site.version }}</p>
+            <p>{{ dateLine }}</p>
             <p>Copyright &copy; {{ site.copyrightYear }} {{ site.author.name }}</p>
           </footer>
         </aside>
@@ -74,4 +74,6 @@ const emit = defineEmits<{
 }>()
 
 const { isLight, toggle: toggleTheme } = useTheme()
+/* 页脚日期由构建期决定,相同日期只保留一项 */
+const dateLine = useRuntimeConfig().public.dateLine as string
 </script>

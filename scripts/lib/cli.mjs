@@ -24,7 +24,8 @@ export class CliError extends Error {}
  */
 export function parseArgs(argv, spec = {}) {
   const flags = new Set([...(spec.flags || []), INLINE_FLAG])
-  const values = new Set(spec.values || [])
+  const multiple = new Set(spec.multi || [])
+  const values = new Set([...(spec.values || []), ...multiple])
   const options = {}
   const positionals = []
   const errors = []
@@ -34,6 +35,9 @@ export function parseArgs(argv, spec = {}) {
   }
   for (const name of values) {
     options[toOptionKey(name)] = null
+  }
+  for (const name of multiple) {
+    options[toOptionKey(name)] = []
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -66,7 +70,11 @@ export function parseArgs(argv, spec = {}) {
       if (inline === null) {
         index += 1
       }
-      options[toOptionKey(name)] = value
+      if (multiple.has(name)) {
+        options[toOptionKey(name)].push(value)
+      } else {
+        options[toOptionKey(name)] = value
+      }
       continue
     }
 

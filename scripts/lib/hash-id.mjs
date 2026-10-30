@@ -36,3 +36,42 @@ export function withHashId(entry) {
   next[HASH_ID_FIELD] = computeHashId(entry)
   return next
 }
+
+export const HASH_ID_PATTERN = /^[0-9a-f]{16}$/
+
+export function isHashId(value) {
+  return typeof value === 'string' && HASH_ID_PATTERN.test(value)
+}
+
+/*
+ * 取条目当前使用的 hash_id:
+ * 清单里是字符串,历史文件里是记录数组,两种形态统一按"最后一个有效记录"取值
+ */
+export function primaryHashId(entry) {
+  const stored = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry[HASH_ID_FIELD] : undefined
+  if (isHashId(stored)) {
+    return stored
+  }
+  if (Array.isArray(stored)) {
+    for (let index = stored.length - 1; index >= 0; index -= 1) {
+      const record = stored[index]
+      if (record && isHashId(record.id)) {
+        return record.id
+      }
+    }
+  }
+
+  return ''
+}
+
+/*
+ * 保守策略: 条目已分配过 hash_id 时原样沿用,只有强制模式才按当前内容重新计算
+ * 这样改标题或简介不会让条目换地址,历史分享链接与已收录页面都保持有效
+ */
+export function ensureHashId(entry, options = {}) {
+  const next = { ...entry }
+  const stored = primaryHashId(entry)
+  delete next[HASH_ID_FIELD]
+  next[HASH_ID_FIELD] = options.force === true || stored === '' ? computeHashId(entry) : stored
+  return next
+}
