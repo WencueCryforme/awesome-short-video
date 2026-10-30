@@ -11,8 +11,9 @@ import { readJsonDocument } from './lib/json-style.mjs'
 import { HASH_ID_FIELD, isNonEmptyString } from './lib/manifest-entry.mjs'
 import { computeHashId } from './lib/hash-id.mjs'
 import { emitResult, makeError } from './lib/result.mjs'
+import { readVersion, versionToDate } from './lib/version.mjs'
 
-/* 站点常量是唯一数据源,脚本按字段名读取站点级信息 */
+/* 站点常量是站点级信息的数据源,版本号例外,统一从仓库根目录的 VERSION 文件读取 */
 const SITE_CONST_PATH = join(PROJECT_ROOT, 'site', 'app', 'const.ts')
 /* 页面写入站点产物目录,该目录由构建生成且不进 git 追踪 */
 const DEFAULT_OUT_DIR = join(PROJECT_ROOT, 'site', '.output', 'public')
@@ -21,7 +22,6 @@ const PAGE_FILE = 'index.html'
 const SITEMAP_FILE = 'sitemap.xml'
 const VIDEO_QUERY_PARAM = 'video'
 const HASH_ID_PATTERN = /^[0-9a-f]{16}$/
-const VERSION_PATTERN = /^\d{4}\.\d{2}\.\d{2}$/
 const ROBOTS_CONTENT = 'index, follow, max-image-preview:large'
 
 /* 页面样式按极简原则内联,与主站样式相互独立 */
@@ -83,7 +83,6 @@ async function loadSiteConfig() {
     title: readConstString(text, 'title'),
     subtitle: readConstString(text, 'subtitle'),
     description: readConstString(text, 'description'),
-    version: readConstString(text, 'version'),
     siteUrl: readConstString(text, 'siteUrl'),
     videoBase: readConstString(text, 'video_oss_base_url'),
     coverDir: readConstString(text, 'video_cover_dir'),
@@ -100,14 +99,13 @@ async function loadSiteConfig() {
       throw new ConfigError('站点常量 ' + SITE_CONST_PATH + ' 缺少字段 ' + field)
     }
   }
-  if (!VERSION_PATTERN.test(site.version)) {
-    throw new ConfigError('站点版本号 ' + site.version + ' 不符合 yyyy.MM.dd 格式', 'version')
-  }
   if (!site.siteUrl.endsWith('/')) {
     throw new ConfigError('站点绝对地址必须以斜杠结尾: ' + site.siteUrl)
   }
 
-  site.uploadDate = site.version.split('.').join('-')
+  /* 版本号取自根目录 VERSION 文件,读取即校验 yyyy.MM.dd 格式 */
+  site.version = await readVersion()
+  site.uploadDate = versionToDate(site.version)
   if (site.copyrightYear === null) {
     site.copyrightYear = Number(site.uploadDate.slice(0, 4))
   }
@@ -239,7 +237,7 @@ async function main() {
   try {
     site = await loadSiteConfig()
   } catch (error) {
-    return fail(error instanceof ConfigError ? error.kind : 'config', error.message)
+    return fail(error && typeof error.kind === 'string' ? error.kind : 'config', error.message)
   }
 
   const manifestPath = options.manifest ? resolveFromCwd(options.manifest) : DEFAULT_MANIFEST
