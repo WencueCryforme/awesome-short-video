@@ -6,7 +6,7 @@
 import { dirname, join } from 'node:path'
 import { ENTRY_FIELDS, HASH_ID_FIELD } from './manifest-entry.mjs'
 import { isHashId, primaryHashId } from './hash-id.mjs'
-import { formatJsonDocument, readJsonDocument, writeJsonDocumentAtomic } from './json-style.mjs'
+import { readJsonDocument, writeTextDocumentAtomic } from './json-style.mjs'
 import { SIMILARITY_THRESHOLD, similarityScore } from './similarity.mjs'
 
 export const HIS_FILE_NAME = 'manifest.his.json'
@@ -77,29 +77,53 @@ export function emptyHisValue() {
   return { total: [], [ARCHIVED_FIELD]: [] }
 }
 
-/* 历史文件的排版: 两空格缩进,标签数组与 id 记录数组各压成单行,每个条目独占一段便于比对 */
-export const HIS_DEFAULT_STYLE = { newline: '\n', indent: '  ', trailingNewline: true }
-export const HIS_WRITE_OPTIONS = { inlineTags: true, compactArraysFor: [HASH_ID_FIELD] }
+/*
+ * 历史文件刻意压成"一个条目一行": 去掉全部缩进与无效空白,只保留结构换行
+ * 这样 diff 仍能按条目定位,同时不适合人工逐字段阅读与改写,减少被手工篡改的可能
+ * 任何手工重排都会被 --check 判定为与清单不一致,必须交给脚本重新写回
+ */
+const HIS_LIST_FIELDS = ['total', ARCHIVED_FIELD]
 
-export function formatHisDocument(value, style) {
-  return formatJsonDocument(value, style || HIS_DEFAULT_STYLE, HIS_WRITE_OPTIONS)
+function serializeHisValue(value) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : emptyHisValue()
+  const lines = ['{']
+  const keys = Object.keys(source)
+  keys.forEach((key, index) => {
+    const tail = index === keys.length - 1 ? '' : ','
+    const item = source[key]
+    if (HIS_LIST_FIELDS.includes(key) && Array.isArray(item) && item.length > 0) {
+      lines.push(JSON.stringify(key) + ': [')
+      item.forEach((child, childIndex) => {
+        lines.push(JSON.stringify(child) + (childIndex === item.length - 1 ? '' : ','))
+      })
+      lines.push(']' + tail)
+      return
+    }
+    lines.push(JSON.stringify(key) + ': ' + JSON.stringify(item) + tail)
+  })
+  lines.push('}')
+  return lines.join('\n') + '\n'
+}
+
+export function formatHisDocument(value) {
+  return serializeHisValue(value)
 }
 
 /* 历史文件缺失时按"首次登记"处理,不视为错误 */
 export async function readHisDocument(filePath) {
   try {
     const document = await readJsonDocument(filePath)
-    return { exists: true, value: document.value, raw: document.raw, style: document.style }
+    return { exists: true, value: document.value, raw: document.raw }
   } catch (error) {
     if (error && error.code === 'ENOENT') {
-      return { exists: false, value: emptyHisValue(), raw: '', style: HIS_DEFAULT_STYLE }
+      return { exists: false, value: emptyHisValue(), raw: '' }
     }
     throw error
   }
 }
 
-export async function writeHisDocument(filePath, value, style) {
-  await writeJsonDocumentAtomic(filePath, value, style || HIS_DEFAULT_STYLE, HIS_WRITE_OPTIONS)
+export async function writeHisDocument(filePath, value) {
+  await writeTextDocumentAtomic(filePath, formatHisDocument(value))
 }
 
 /*

@@ -101,6 +101,14 @@ export async function writeJsonDocument(filePath, value, style, options = {}) {
   await writeFile(filePath, formatJsonDocument(value, style, options), 'utf8')
 }
 
+/* 排版由调用方决定的文本写回,同样先写中间文件再改名 */
+export async function writeTextDocumentAtomic(filePath, text) {
+  const tempPath = tempFilePathFor(filePath, '.writing')
+  await mkdir(dirname(tempPath), { recursive: true })
+  await writeFile(tempPath, text, 'utf8')
+  await rename(tempPath, filePath)
+}
+
 /* 先把内容写到目标目录下 temp 子目录的中间文件,再改名到目标,避免写入中途失败留下半个文件 */
 export async function writeJsonDocumentAtomic(filePath, value, style, options = {}) {
   const tempPath = tempFilePathFor(filePath, '.writing')

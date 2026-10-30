@@ -113,6 +113,7 @@ node scripts/sort-video-manifest_tags.mjs --check --manifest video/manifest.json
 - 新增条目与内容大幅改写后新旧条目无法自动配对时,先由 `try2-update-manifest-his.mjs` 报冲突,再由 `merge-into-manifest-his.mjs` 人工指定配对
 - 自动配对分三步: 先按文件名完全一致配对,再按条目字段拼接文本的相似度配对,相似度不足阈值或最优结果不唯一时一律留给人工
 - 相似度阈值由 `scripts/lib/similarity.mjs` 的 `SIMILARITY_THRESHOLD` 定义,当前 `0.6`;新增条目的重复判定与历史配对共用该值,调整只改这一处
+- 排版刻意压成"一个条目一行": 顶层结构各占一行,每个条目压成一条 JSON,不含缩进与无效空白;手工重排或手工改写都会被 `--check` 判定为与清单不一致,需由脚本重新写回
 
 ## try2-update-manifest-his.mjs
 
@@ -225,7 +226,7 @@ node scripts/build-single-video-pages.mjs --out site/.output/public
 
 日期分工: 构建日期取 `VERSION`,更新日期取历史文件里该 `hash_id` 的登记日期,两者相同时只显示更新日期,显示形态在生成时决定。页面分享按钮复制页面自身的地址,提示文字写在页内,不使用浏览器原生弹窗。
 
-页脚依次给出作者链接,站点入口与仓库链接,标题,副标题,描述,站点绝对地址,作者名称与链接,仓库地址,对象存储基地址,封面目录与后缀,版权年份全部在生成期从 `site/app/const.ts` 的 `SITE` 常量读取,更换作者或仓库只改该文件;任取不到即报错,不会静默产出残缺页面。
+页脚依次给出 `Copyright © 年份 作者` 的作者链接与指向仓库的站点名(不再单独放主页面入口,避免与正文底部的入口重复),标题,副标题,描述,站点绝对地址,作者名称与链接,仓库地址,对象存储基地址,封面目录与后缀,版权年份全部在生成期从 `site/app/const.ts` 的 `SITE` 常量读取,更换作者或仓库只改该文件;任取不到即报错,不会静默产出残缺页面。
 
 ## sync-version.mjs
 

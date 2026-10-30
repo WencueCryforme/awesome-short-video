@@ -183,12 +183,14 @@ function escapeJson(value) {
   return JSON.stringify(value).split('<').join('\\u003c')
 }
 
-/* 页脚统一给出作者,仓库与站点入口,链接全部取自站点常量,更换作者或仓库只需改常量 */
+/*
+ * 页脚只放作者与仓库两个入口,站点名直接链到仓库,不再重复指向主页面
+ * 主页面入口由正文底部那一条负责,避免同一目标在一个页面里出现两次
+ */
 function footerOf(site) {
   const items = [
-    '© ' + site.copyrightYear + ' <a href="' + escapeHtml(site.authorUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(site.authorName) + '</a>',
-    '<a href="../../">' + escapeHtml(site.title) + '</a>',
-    '<a href="' + escapeHtml(site.repositoryUrl) + '" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>'
+    'Copyright © ' + site.copyrightYear + ' <a href="' + escapeHtml(site.authorUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(site.authorName) + '</a>',
+    '<a href="' + escapeHtml(site.repositoryUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(site.title) + '</a>'
   ]
   return '<footer>' + items.join(' · ') + '</footer>'
 }

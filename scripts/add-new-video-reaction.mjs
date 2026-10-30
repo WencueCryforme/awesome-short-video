@@ -179,7 +179,7 @@ async function performAdd(form) {
         error: makeError('历史文件存在 ' + conflicts.length + ' 处无法自动判定的冲突,请先运行 node scripts/merge-into-manifest-his.mjs 处理', 'conflict', { conflicts })
       }
     }
-    await writeHisDocument(tempHis, planned.value, hisDocument.style)
+    await writeHisDocument(tempHis, planned.value)
 
     /* 排序脚本同时规范化了标签顺序,三份结果一起写回,避免清单,标签文件与历史文件互相不一致 */
     await replaceFile(tempManifest, manifestPath)

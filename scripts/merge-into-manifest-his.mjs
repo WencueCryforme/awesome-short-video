@@ -154,7 +154,7 @@ async function main() {
   steps.push({ action: '比对新旧条目', ok: true, report: summarize(plan.report) })
 
   try {
-    await writeHisDocument(hisPath, plan.value, hisDocument.style)
+    await writeHisDocument(hisPath, plan.value)
     steps.push({ action: '写入历史文件', ok: true, his: hisPath })
   } catch (error) {
     steps.push({ action: '写入历史文件', ok: false, message: error.message })

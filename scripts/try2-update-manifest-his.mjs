@@ -124,7 +124,7 @@ async function main() {
       steps.push({ action: '比对历史文件', ok: false, message })
       return fail('his', message, { steps, his: hisPath })
     }
-    if (formatHisDocument(plan.value, hisDocument.style) !== hisDocument.raw) {
+    if (formatHisDocument(plan.value) !== hisDocument.raw) {
       const message = '历史文件与清单不一致: ' + hisPath + ',请运行 node scripts/try2-update-manifest-his.mjs 同步'
       steps.push({ action: '比对历史文件', ok: false, message })
       return fail('his', message, { steps, his: hisPath, report: summarize(plan.report) })
@@ -141,7 +141,7 @@ async function main() {
   }
 
   try {
-    await writeHisDocument(hisPath, plan.value, hisDocument.style)
+    await writeHisDocument(hisPath, plan.value)
     steps.push({ action: '写入历史文件', ok: true, his: hisPath })
   } catch (error) {
     steps.push({ action: '写入历史文件', ok: false, message: error.message })

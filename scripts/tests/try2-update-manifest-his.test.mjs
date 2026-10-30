@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { defaultHisPath } from '../lib/manifest-his.mjs'
+import { defaultHisPath, formatHisDocument } from '../lib/manifest-his.mjs'
 import { PROJECT_ROOT, createFixture, makeEntry, makeManifest, readResult, runScript } from './helpers.mjs'
 
 /* 登记日期取仓库根目录 VERSION 的值,与脚本读取口径一致 */
@@ -16,8 +16,9 @@ function readHis(fixture) {
   return readFile(defaultHisPath(fixture.manifestPath), 'utf8').then(text => JSON.parse(text))
 }
 
+/* 历史文件按脚本的行压缩格式写入,手工重排会被 --check 判定为不一致 */
 function writeHis(fixture, value) {
-  return writeFile(defaultHisPath(fixture.manifestPath), JSON.stringify(value, null, 2) + '\n', 'utf8')
+  return writeFile(defaultHisPath(fixture.manifestPath), formatHisDocument(value), 'utf8')
 }
 
 test('首次运行把清单登记为历史文件基线', async () => {
@@ -149,6 +150,38 @@ test('--check 在历史文件落后于清单时失败', async () => {
   assert.equal(result.status, 1)
   assert.equal(payload.error.kind, 'his')
   assert.match(payload.error.message, /与清单不一致/)
+})
+
+test('历史文件被手工重排后 --check 失败', async () => {
+  const entry = makeEntry({ filename: 'a.mp4' })
+  const fixture = await createFixture({ manifest: makeManifest([entry]), tags: ['爱'] })
+  run(['--manifest', fixture.manifestPath])
+
+  /* 手工格式化成两空格缩进,内容语义不变但排版与脚本输出不一致 */
+  const hisPath = defaultHisPath(fixture.manifestPath)
+  const value = JSON.parse(await readFile(hisPath, 'utf8'))
+  await writeFile(hisPath, JSON.stringify(value, null, 2) + '\n', 'utf8')
+
+  const result = run(['--check', '--manifest', fixture.manifestPath])
+  const payload = readResult(result)
+
+  assert.equal(payload.ok, false)
+  assert.equal(payload.error.kind, 'his')
+  assert.match(payload.error.message, /与清单不一致/)
+})
+
+test('历史文件按行压缩写入,不含缩进空白', async () => {
+  const first = makeEntry({ filename: 'a.mp4' })
+  const second = makeEntry({ title: '乙', desc: '乙的简介', filename: 'b.mp4', tags: ['本'] })
+  const fixture = await createFixture({ manifest: makeManifest([first, second]), tags: ['爱', '本'] })
+  run(['--manifest', fixture.manifestPath])
+
+  const raw = await readFile(defaultHisPath(fixture.manifestPath), 'utf8')
+  const lines = raw.trim().split('\n')
+  /* 一个条目一行,顶层结构各占一行,没有缩进 */
+  assert.equal(lines.length, 10)
+  assert.equal(lines.some(line => /^\s+/.test(line)), false)
+  assert.equal(lines.filter(line => line.startsWith('{"title"')).length, 2)
 })
 
 test('清单条目缺少 hash_id 时失败', async () => {

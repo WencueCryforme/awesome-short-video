@@ -216,10 +216,13 @@ test('页脚作者与仓库链接取自站点常量', async () => {
   const html = await readFileText(pagePath(fixture, entry))
   const footer = /<footer>([\s\S]*?)<\/footer>/.exec(html)
   assert.notEqual(footer, null)
-  /* 作者链接取 author 对象内的 url,仓库链接取 repositoryUrl,两者都在 site/app/const.ts 里维护 */
+  /* 版权文案与站内统一为 Copyright © 年份 作者,作者链接取 author 对象内的 url,站点名直接指向 repositoryUrl */
+  assert.match(footer[1], /^Copyright © 2026 <a href="/)
   assert.match(footer[1], /<a href="https:\/\/github\.com\/WencueCryforme" target="_blank" rel="noopener noreferrer">WencueCryforme<\/a>/)
-  assert.match(footer[1], /<a href="https:\/\/github\.com\/WencueCryforme\/awesome-short-video" target="_blank" rel="noopener noreferrer">GitHub 仓库<\/a>/)
-  assert.match(footer[1], /<a href="\.\.\/\.\.\/">awesome-short-video<\/a>/)
+  assert.match(footer[1], /<a href="https:\/\/github\.com\/WencueCryforme\/awesome-short-video" target="_blank" rel="noopener noreferrer">awesome-short-video<\/a>/)
+  assert.equal(footer[1].includes('GitHub 仓库'), false)
+  /* 主页面入口只由正文那一条负责,页脚不再重复 */
+  assert.equal(footer[1].includes('href="../../"'), false)
 })
 
 test('页面包含来源链接与分享按钮', async () => {

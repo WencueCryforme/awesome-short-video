@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { defaultHisPath } from '../lib/manifest-his.mjs'
+import { defaultHisPath, formatHisDocument } from '../lib/manifest-his.mjs'
 import { PROJECT_ROOT, createFixture, makeEntry, makeManifest, readResult, runScript } from './helpers.mjs'
 
 const VERSION = (await readFile(join(PROJECT_ROOT, 'VERSION'), 'utf8')).trim()
@@ -15,8 +15,9 @@ function readHis(fixture) {
   return readFile(defaultHisPath(fixture.manifestPath), 'utf8').then(text => JSON.parse(text))
 }
 
+/* 历史文件按脚本的行压缩格式写入,手工重排会被 --check 判定为不一致 */
 function writeHis(fixture, value) {
-  return writeFile(defaultHisPath(fixture.manifestPath), JSON.stringify(value, null, 2) + '\n', 'utf8')
+  return writeFile(defaultHisPath(fixture.manifestPath), formatHisDocument(value), 'utf8')
 }
 
 function buildOldEntry() {
