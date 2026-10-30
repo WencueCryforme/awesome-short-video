@@ -8,7 +8,9 @@ export const SITE = {
     url: 'https://github.com/WencueCryforme'
   },
   repositoryUrl: 'https://github.com/WencueCryforme/awesome-short-video',
-  version: '26.10.30',
+  /* 站点线上绝对地址,结尾保留斜杠,用于 canonical 与分享卡片等站点级元信息 */
+  siteUrl: 'https://wencuecryforme.github.io/awesome-short-video/',
+  version: '2026.10.30',
   /* 视频文件的对象存储基地址,所有入库视频统一存放于此,已自带结尾斜杠 */
   video_oss_base_url: 'https://wencuecryforme-awesome-short-video.uxiyu.xyz/file/',
   /* 封面图片的站点内目录与后缀,封面文件名为视频文件名加后缀,随构建产物一起发布,目录已自带结尾斜杠 */

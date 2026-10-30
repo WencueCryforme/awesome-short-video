@@ -1,5 +1,7 @@
 <template>
   <div class="app-view" :class="{ 'is-booting': !urlReady, 'is-clear-mode': clearMode }">
+    <!-- 视觉隐藏的页面主标题,仅供读屏软件与搜索引擎,不参与布局 -->
+    <h1 class="sr-only">{{ site.title }} {{ site.subtitle }}</h1>
     <TopNav
       :active="activeTab"
       :over-video="view === 'home'"
@@ -599,11 +601,5 @@ onBeforeUnmount(() => {
   if (scrollFrame) {
     cancelAnimationFrame(scrollFrame)
   }
-})
-
-useSeoMeta({
-  title: site.title,
-  description: site.description,
-  ogTitle: site.title
 })
 </script>

@@ -48,6 +48,9 @@ jobs:
           NUXT_APP_BASE_URL: /${{ github.event.repository.name }}/
         run: npm run generate
 
+      - name: Build single video pages
+        run: node scripts/build-single-video-pages.mjs
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

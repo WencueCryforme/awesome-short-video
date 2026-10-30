@@ -10,6 +10,7 @@ tmp/
 # Version documents
 v*-*.md
 [0-9][0-9].[0-9][0-9].[0-9][0-9]-*.md
+[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]-*.md
 
 # Video files are hosted on object storage, not tracked by git
 video/file/

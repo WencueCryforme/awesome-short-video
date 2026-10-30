@@ -25,6 +25,7 @@ scripts/
 │   ├── helpers.mjs
 │   └── sort-video-manifest_tags.test.mjs
 ├── add-new-video-reaction.mjs      # 图形界面新增条目
+├── build-single-video-pages.mjs    # 逐视频静态页生成
 ├── catch-video-cover.mjs           # 批量捕获视频封面
 ├── check-video-manifest.mjs        # 清单校验
 └── sort-video-manifest_tags.mjs    # 清单排序
@@ -136,6 +137,26 @@ node scripts/catch-video-cover.mjs --td 8
 | `--td` | 并发线程数上限,`1` 到 `16` 的整数,缺失时取 `4`;实际并发还要受 CPU 核数一半约束 |
 
 取帧策略: 从第 0 秒起按 `10` 秒采样步长取画面,最多尝试 `30` 次,逐个采样点按判断严苛等级的条件判定,取第一个全部满足的画面。采样步长与尝试次数是两个独立配置项,不相互推导。条件按顺序累加,`-O1` 只用第一条,`-O2` 用前两条,`-O3` 用全部三条: 一是颜色族个数不少于 3;二是像素最多的颜色族不超过该帧像素总数 60%;三是达标颜色族个数不少于 2,达标指该颜色族的像素按 4 邻接连通性划分后集合数量不超过 2。颜色族由像素按通道高位量化成色格后,由像素数量从多到少的色格依次归并而成,与某个颜色族中心各通道差值都不超过容差的色格并入该族,一个颜色族按一种颜色计数;尝试次数用完仍不满足时退化为第 3 秒画面,视频短于 3 秒取最后一帧。视频后缀,封面后缀,采样步长,尝试次数,退化时间点,尾帧偏移,量化位宽,颜色容差,连通性,判定阈值,默认等级,并发线程数上限,线程数与核数的折算比例与写出质量集中在脚本顶部配置区。并发按文件分发,单个视频由一个线程全程处理,输出顺序与单线程一致。校验模式下缺失与多出的封面都会在 `error.details` 中列出。
+
+## build-single-video-pages.mjs
+
+在构建期把清单里的每条视频渲染为独立静态页,写入站点产物目录,仓库内不保留生成结果。页面自带原生 `video` 控件直接播放对象存储中的文件,并提供返回主页面的入口,便于搜索引擎为每条视频单独建立索引。
+
+`bash`
+node scripts/build-single-video-pages.mjs
+node scripts/build-single-video-pages.mjs --single 157cfa275e9d4ac5
+node scripts/build-single-video-pages.mjs --check
+node scripts/build-single-video-pages.mjs --out site/.output/public
+`bash`
+
+| 参数 | 说明 |
+|:---:|:---:|
+| `--single <hash_id>` | 只生成该条目对应的页面,不改写 `sitemap.xml`,取值必须是 16 位小写十六进制 |
+| `--out <path>` | 站点产物目录,缺省为 `site/.output/public`,相对路径按当前工作目录解析 |
+| `--manifest <path>` | 待读取清单,缺省为 `video/manifest.json` |
+| `--check` | 只校验与渲染,不写文件 |
+
+页面路径为 `video/<hash_id>/index.html`,站点地图为 `sitemap.xml`,收录站点首页与全部逐视频页面。产物目录不存在时直接报错,需先执行 `npm run generate`;条目 `hash_id` 与内容不一致时同样报错,需先执行排序脚本。页面里的站点名称,绝对地址,作者,版本号与对象存储基地址都取自 `site/app/const.ts`,版本号必须是 `yyyy.MM.dd` 格式。
 
 ## tests
 

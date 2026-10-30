@@ -54,6 +54,41 @@ function writeCatalogScript() {
 
 const catalogScriptFile = writeCatalogScript()
 
+/*
+ * 站点只有一个可索引地址,站点级 SEO 与分享元信息全部由构建期常量决定:
+ * 分享图取清单首条条目的封面,清单调整后随之变化,不需要单独维护
+ */
+const siteUrl = SITE.siteUrl
+const shareCoverFileName = catalog.total[0]
+  ? catalog.total[0].filename + SITE.video_cover_extension
+  : ''
+const shareImageUrl = shareCoverFileName
+  ? siteUrl + SITE.video_cover_dir + encodeURIComponent(shareCoverFileName)
+  : ''
+const shareImageMeta = shareImageUrl
+  ? [
+      { property: 'og:image', content: shareImageUrl },
+      { property: 'og:image:alt', content: SITE.title + ' ' + SITE.subtitle }
+    ]
+  : []
+const shareImageTwitterMeta = shareImageUrl
+  ? [{ name: 'twitter:image', content: shareImageUrl }]
+  : []
+const siteJsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: SITE.title,
+  alternateName: SITE.subtitle,
+  description: SITE.description,
+  url: siteUrl,
+  inLanguage: 'zh-CN',
+  author: {
+    '@type': 'Person',
+    name: SITE.author.name,
+    url: SITE.author.url
+  }
+})
+
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-17',
   devtools: { enabled: false },
@@ -65,13 +100,32 @@ export default defineNuxtConfig({
       meta: [
         { name: 'description', content: SITE.description },
         { name: 'author', content: SITE.author.name },
+        { name: 'robots', content: 'index, follow, max-image-preview:large' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { property: 'og:title', content: SITE.title },
         { property: 'og:description', content: SITE.description },
-        { property: 'og:type', content: 'website' }
+        { property: 'og:type', content: 'website' },
+        { property: 'og:site_name', content: SITE.title },
+        { property: 'og:locale', content: 'zh_CN' },
+        { property: 'og:url', content: siteUrl },
+        ...shareImageMeta,
+        { name: 'twitter:card', content: 'summary_large_image' },
+        { name: 'twitter:title', content: SITE.title },
+        { name: 'twitter:description', content: SITE.description },
+        ...shareImageTwitterMeta
       ],
-      link: [{ rel: 'icon', type: 'image/svg+xml', href: baseURL + 'favicon.svg' }],
+      link: [
+        { rel: 'icon', type: 'image/svg+xml', href: baseURL + 'favicon.svg' },
+        { rel: 'canonical', href: siteUrl }
+      ],
       script: [
+        /* 站点级结构化数据,内容在构建期序列化 */
+        {
+          key: 'site-jsonld',
+          type: 'application/ld+json',
+          tagPosition: 'head',
+          innerHTML: siteJsonLd
+        },
         {
           key: 'theme-init',
           tagPosition: 'head',
