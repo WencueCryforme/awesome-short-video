@@ -4,6 +4,7 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PROJECT_ROOT, readResult, runScript } from './helpers.mjs'
+import { advanceVersionForToday, formatVersionDate, versionForToday } from '../lib/version.mjs'
 
 const TEMP_ROOT = join(PROJECT_ROOT, 'temp')
 const VERSION = '2026.10.31'
@@ -178,4 +179,65 @@ test('sync-version: 未知位置参数报错', async () => {
 
   const payload = readResult(result)
   assert.equal(payload.error.kind, 'args')
+})
+test('新增条目取当天日期作为登记版本,只向前推进', () => {
+  const day = new Date(2026, 10, 7, 9, 30)
+
+  assert.equal(formatVersionDate(day), '2026.11.07')
+  assert.equal(formatVersionDate(new Date(2026, 0, 5, 0, 0)), '2026.01.05')
+  assert.equal(versionForToday('2026.10.31', day), '2026.11.07')
+  assert.equal(versionForToday('2026.11.07', day), '2026.11.07')
+  assert.equal(versionForToday('2026.12.01', day), '2026.12.01')
+})
+
+test('推进版本号会写 VERSION 并调用同步,同步失败时还原', async () => {
+  const dir = await mkdtemp(join(TEMP_ROOT, 'version-'))
+  createdDirs.push(dir)
+  await writeFile(join(dir, 'VERSION'), '2026.10.31', 'utf8')
+  const day = new Date(2026, 10, 7, 9, 30)
+
+  let syncedWith = ''
+  const advanced = await advanceVersionForToday({
+    root: dir,
+    now: day,
+    sync: async version => {
+      syncedWith = version
+      return { ok: true }
+    }
+  })
+
+  assert.equal(advanced.version, '2026.11.07')
+  assert.deepEqual(advanced.bump, { from: '2026.10.31', to: '2026.11.07' })
+  assert.equal(syncedWith, '2026.11.07')
+  assert.equal(await readFile(join(dir, 'VERSION'), 'utf8'), '2026.11.07')
+
+  await assert.rejects(
+    advanceVersionForToday({
+      root: dir,
+      now: new Date(2026, 11, 1),
+      sync: async () => ({ ok: false, error: { message: '同步失败' } })
+    }),
+    /版本号同步失败/
+  )
+  assert.equal(await readFile(join(dir, 'VERSION'), 'utf8'), '2026.11.07')
+})
+
+test('版本号已等于当天时不写文件也不调用同步', async () => {
+  const dir = await mkdtemp(join(TEMP_ROOT, 'version-'))
+  createdDirs.push(dir)
+  await writeFile(join(dir, 'VERSION'), '2026.11.07', 'utf8')
+
+  let called = 0
+  const advanced = await advanceVersionForToday({
+    root: dir,
+    now: new Date(2026, 10, 7, 23, 59),
+    sync: async () => {
+      called += 1
+      return { ok: true }
+    }
+  })
+
+  assert.equal(advanced.version, '2026.11.07')
+  assert.equal(advanced.bump, null)
+  assert.equal(called, 0)
 })
