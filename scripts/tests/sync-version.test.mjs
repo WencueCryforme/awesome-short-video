@@ -241,3 +241,41 @@ test('版本号已等于当天时不写文件也不调用同步', async () => {
   assert.equal(advanced.bump, null)
   assert.equal(called, 0)
 })
+test('sync-version: 同一文件出现多处版本号时报错,不一起改写', async () => {
+  const dir = await createVersionFixture({
+    files: { 'site/app/const.ts': constText(VERSION) + "  version: '" + STALE_VERSION + "'\n" }
+  })
+
+  const result = runScript('sync-version.mjs', ['--root', dir])
+
+  assert.equal(result.status, 1)
+  const payload = readResult(result)
+  assert.equal(payload.error.kind, 'file')
+  assert.match(payload.error.message, /出现 2 次,期望 1 次/)
+  assert.equal((await readFile(join(dir, 'site', 'app', 'const.ts'), 'utf8')).includes(STALE_VERSION), true)
+})
+
+test('sync-version: 注释里的版本号不参与同步', async () => {
+  const dir = await createVersionFixture({
+    files: { 'site/app/const.ts': constText(VERSION) + "/* 旧写法 version: '2020.01.01' 已废弃 */\n" }
+  })
+
+  const result = runScript('sync-version.mjs', ['--root', dir])
+
+  assert.equal(result.status, 0)
+  const text = await readFile(join(dir, 'site', 'app', 'const.ts'), 'utf8')
+  assert.ok(text.includes("version: '2020.01.01'"))
+})
+
+test('sync-version: 徽章带后缀时按缺少版本号处理', async () => {
+  const dir = await createVersionFixture({
+    files: { 'README.md': '[![Version](https://img.shields.io/badge/Version-2026.10.31-beta)](https://example.com)\n' }
+  })
+
+  const result = runScript('sync-version.mjs', ['--root', dir])
+
+  assert.equal(result.status, 1)
+  const payload = readResult(result)
+  assert.equal(payload.error.kind, 'file')
+  assert.match(payload.error.message, /缺少版本号字段/)
+})

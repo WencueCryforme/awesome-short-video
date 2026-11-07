@@ -41,25 +41,35 @@ const JSON_TARGETS = [
   }
 ]
 
-/* 文本型目标各自声明取值与替换规则,避免用同一套正则覆盖不同语法 */
+/*
+ * 文本型目标各自声明取值与替换规则,避免用同一套正则覆盖不同语法
+ * expect 声明该文件里版本号应出现的次数,数量不符直接报错,防止新增同形态字段被静默一起改写
+ * const.ts 的规则带行首两空格锚点,只认独立成行的字段,注释与字符串里的示例不参与
+ * 徽章规则要求日期后面紧跟六位十六进制颜色或行末,避免带后缀的写法被部分替换
+ */
+const BADGE_SUFFIX = '(?=-[0-9a-fA-F]{6}(?![\\w-])|$)'
+
 const TEXT_TARGETS = [
   {
     path: 'site/app/const.ts',
     kind: 'text',
-    values: text => matchAll(text, /\bversion:\s*'(\d{4}\.\d{2}\.\d{2})'/g),
-    replace: (text, version) => text.replace(/(\bversion:\s*')\d{4}\.\d{2}\.\d{2}'/g, (all, head) => head + version + "'")
+    expect: 1,
+    values: text => matchAll(text, /^ {2}version:\s*'(\d{4}\.\d{2}\.\d{2})'/gm),
+    replace: (text, version) => text.replace(/^( {2}version:\s*')\d{4}\.\d{2}\.\d{2}'/gm, (all, head) => head + version + "'")
   },
   {
     path: 'README.md',
     kind: 'text',
-    values: text => matchAll(text, /badge\/Version-(\d{4}\.\d{2}\.\d{2})/g),
-    replace: (text, version) => text.replace(/(badge\/Version-)\d{4}\.\d{2}\.\d{2}/g, (all, head) => head + version)
+    expect: 1,
+    values: text => matchAll(text, new RegExp('badge/Version-(\\d{4}\\.\\d{2}\\.\\d{2})' + BADGE_SUFFIX, 'g')),
+    replace: (text, version) => text.replace(new RegExp('(badge/Version-)\\d{4}\\.\\d{2}\\.\\d{2}' + BADGE_SUFFIX, 'g'), (all, head) => head + version)
   },
   {
     path: 'README_en-US.md',
     kind: 'text',
-    values: text => matchAll(text, /badge\/Version-(\d{4}\.\d{2}\.\d{2})/g),
-    replace: (text, version) => text.replace(/(badge\/Version-)\d{4}\.\d{2}\.\d{2}/g, (all, head) => head + version)
+    expect: 1,
+    values: text => matchAll(text, new RegExp('badge/Version-(\\d{4}\\.\\d{2}\\.\\d{2})' + BADGE_SUFFIX, 'g')),
+    replace: (text, version) => text.replace(new RegExp('(badge/Version-)\\d{4}\\.\\d{2}\\.\\d{2}' + BADGE_SUFFIX, 'g'), (all, head) => head + version)
   }
 ]
 
@@ -102,6 +112,14 @@ async function handleTarget(root, target, version, check) {
 
   if (current.length === 0 || current.some(value => typeof value !== 'string' || value.length === 0)) {
     throw new SyncError('目标文件缺少版本号字段: ' + target.path, 'file', { path: target.path })
+  }
+  /* 文本目标的匹配数量必须与声明一致,多出来的一律视为新增了同形态字段,直接报错而不是一起改写 */
+  if (Number.isInteger(target.expect) && current.length !== target.expect) {
+    throw new SyncError(
+      '目标文件里的版本号出现 ' + current.length + ' 次,期望 ' + target.expect + ' 次: ' + target.path,
+      'file',
+      { path: target.path, expected: target.expect, actual: current.length }
+    )
   }
   if (current.every(value => value === version)) {
     return { path: target.path, status: 'ok', current }
