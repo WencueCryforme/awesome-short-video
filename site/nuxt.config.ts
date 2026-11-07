@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_THEME, SITE } from './app/const'
@@ -27,40 +27,17 @@ function readJson<T>(relativePath: string): T {
 const catalog = readJson<CatalogManifest>('video/manifest.json')
 const tagPresets = readJson<string[]>('video/tags.json')
 
-/* 历史文件里的登记日期统一按 yyyy.MM.dd 书写,展示时转为 yyyy-MM-dd */
+/* 版本号以 yyyy.MM.dd 书写,展示时转为 yyyy-MM-dd */
 function toIsoDate(value: string): string {
   return value.split('.').join('-')
 }
 
-function readHistoryDates(): string[] {
-  const filePath = resolve(projectRoot, 'video/manifest.his.json')
-  if (!existsSync(filePath)) {
-    return []
-  }
-  const document = readJson<{ total?: Array<{ hash_id?: unknown }> }>('video/manifest.his.json')
-  const dates: string[] = []
-  for (const entry of Array.isArray(document.total) ? document.total : []) {
-    const records = Array.isArray(entry && entry.hash_id) ? entry.hash_id : []
-    for (const record of records) {
-      const value = record && typeof record === 'object' && typeof (record as { date?: unknown }).date === 'string'
-        ? (record as { date: string }).date
-        : ''
-      if (/^\d{4}\.\d{2}\.\d{2}$/.test(value)) {
-        dates.push(toIsoDate(value))
-      }
-    }
-  }
-  return dates
-}
-
 /*
- * 页脚只展示两个日期: 构建日期取仓库版本号,更新日期取历史文件里最晚的登记日期
- * 两者相同时只显示更新日期,显示形态在构建期决定,产物里不再保留判断逻辑
+ * 站点页脚只展示一个日期,取仓库版本号: 每次部署都算站点更新
+ * 逐视频页仍按条目的登记日期与构建日期分别展示,由生成脚本决定
  */
 const buildDate = toIsoDate(readFileSync(resolve(projectRoot, 'VERSION'), 'utf8').trim())
-const historyDates = readHistoryDates().sort()
-const updatedDate = historyDates.length > 0 ? historyDates[historyDates.length - 1] : buildDate
-const dateLine = updatedDate === buildDate ? '更新 ' + updatedDate : '更新 ' + updatedDate + ' · 构建 ' + buildDate
+const dateLine = '更新 ' + buildDate
 
 /* 清单元数据目录与脚本名前缀,目录列在 git 忽略项内 */
 const DATA_DIR = resolve(siteRoot, '.data')
