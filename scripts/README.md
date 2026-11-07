@@ -186,6 +186,8 @@ node scripts/add-new-video-reaction.mjs --manifest video/manifest.json --port 81
 
 封面捕获等级: 表单内有下拉选择,取 `-O1` 到 `-O3`,缺省 `-O3`(最严格,三个条件全部满足才算合格帧);等级越高越可能取不到合格帧而退化为固定帧,失败后可在页面下方换档重试。
 
+封面补拍: 页面下半部分列出全部条目并标注本地是否已有封面,选中后按当前等级对已有条目重跑捕获,日志同样推到页面下方,不改变清单内容。
+
 视频文件规则: 站点按 `filename` 从对象存储读取视频,本仓库只保留清单条目,不存放视频文件;新增条目前需先把视频上传到对象存储的同一路径下,同时在本地 `video/file/` 放一份同名副本,封面捕获会读这份副本。
 
 ## catch-video-cover.mjs
@@ -230,7 +232,7 @@ node scripts/build-single-video-pages.mjs --out site/.output/public
 
 页面路径为 `video/<hash_id>/index.html`,站点地图为 `sitemap.xml`,收录站点首页与全部逐视频页面(不含下架页);全量运行同时写出 `robots.txt`,其 `Sitemap` 行与站点地图地址一致,两者都取自 `site/app/const.ts` 的 `siteUrl`。产物目录不存在时直接报错,需先执行 `npm run generate`;条目缺少合法 `hash_id` 时同样报错,需先执行排序脚本。页面里的站点名称,绝对地址,作者与对象存储基地址取自 `site/app/const.ts`,版本号取自仓库根目录的 `VERSION` 文件,必须是 `yyyy.MM.dd` 格式。
 
-日期分工: 构建日期取 `VERSION`,更新日期取历史文件里该 `hash_id` 的登记日期,两者相同时只显示更新日期,显示形态在生成时决定。页面分享按钮复制页面自身的地址,提示文字写在页内,不使用浏览器原生弹窗。
+日期分工: 逐视频页的构建日期取 `VERSION`,更新日期取历史文件里该 `hash_id` 的登记日期,两者相同时只显示更新日期,显示形态在生成时决定;站点页脚只显示一个日期,取 `VERSION`。页面分享按钮复制页面自身的地址,提示文字写在页内,不使用浏览器原生弹窗。
 
 页脚依次给出 `Copyright © 年份 作者` 的作者链接与指向仓库的站点名(不再单独放主页面入口,避免与正文底部的入口重复),标题,副标题,描述,站点绝对地址,作者名称与链接,仓库地址,对象存储基地址,封面目录与后缀,版权年份全部在生成期从 `site/app/const.ts` 的 `SITE` 常量读取,更换作者或仓库只改该文件;任取不到即报错,不会静默产出残缺页面。
 
@@ -250,7 +252,7 @@ npm run version:check
 | `--check` | 只比对,不写文件;存在差异时以 `kind` 为 `version` 失败,差异项在 `error.details.mismatches` 中列出 |
 | `--root <path>` | 项目根目录,缺省为仓库根目录,相对路径按当前工作目录解析,主要供测试使用 |
 
-同步目标共 6 个文件 7 处: 根 `package.json` 与站点 `package.json` 的 `version`,站点 `package-lock.json` 的根 `version` 与 `packages[""].version`,`site/app/const.ts` 的 `SITE.version`,中文与英文 README 的版本徽章。`VERSION` 内容只有版本号本身,不含任何空白符,缺失或格式不合规时直接报错。同步范围只含上述代码与包文件,`AGENTS.md` 与 `version.index.md` 等文档内的版本号无法由 `VERSION` 自动修正,版本号迭代时需手动更新。JSON 目标按两空格缩进重写并保留末尾换行,文本目标只替换版本号本身。
+同步目标共 6 个文件 7 处: 根 `package.json` 与站点 `package.json` 的 `version`,站点 `package-lock.json` 的根 `version` 与 `packages[""].version`,`site/app/const.ts` 的 `SITE.version`,中文与英文 README 的版本徽章。`VERSION` 内容只有版本号本身,不含任何空白符,缺失或格式不合规时直接报错。同步范围只含上述代码与包文件,`AGENTS.md` 与 `version.index.md` 等文档内的版本号无法由 `VERSION` 自动修正,版本号迭代时需手动更新。JSON 目标按两空格缩进重写并保留末尾换行,文本目标只替换版本号本身。文本目标声明了版本号应出现的次数,数量不符直接以 `kind` 为 `file` 失败;站点常量的规则带行首两空格锚点,注释与字符串里的示例不参与;README 徽章要求日期后紧跟六位十六进制颜色或行末,带后缀的写法按缺少版本号处理。
 
 ## tests
 
