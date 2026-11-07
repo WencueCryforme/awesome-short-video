@@ -85,7 +85,8 @@ html::-webkit-scrollbar,
 body::-webkit-scrollbar,
 textarea::-webkit-scrollbar,
 .tags::-webkit-scrollbar,
-.result-body::-webkit-scrollbar {
+.result-body::-webkit-scrollbar,
+.cover-body::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
@@ -586,6 +587,24 @@ textarea.control {
 
 .result-body {
   max-height: 240px;
+  margin: 10px 0 0;
+  overflow: auto;
+  color: var(--text-soft);
+  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.cover {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cover-body {
+  max-height: 260px;
   margin: 10px 0 0;
   overflow: auto;
   color: var(--text-soft);

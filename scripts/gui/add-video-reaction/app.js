@@ -21,7 +21,9 @@ const ICONS = {
 const state = {
   tags: [],
   submitting: false,
-  resetArmed: false
+  resetArmed: false,
+  coverSource: null,
+  coverFilename: ''
 }
 
 const dom = {}
@@ -41,6 +43,10 @@ function cacheDom() {
   dom.reset = byId('reset')
   dom.quit = byId('quit')
   dom.resultDismiss = byId('result-dismiss')
+  dom.cover = byId('cover')
+  dom.coverTitle = byId('cover-title')
+  dom.coverLog = byId('cover-log')
+  dom.coverRetry = byId('cover-retry')
   dom.author = byId('author')
   dom.toastLayer = byId('toast-layer')
   dom.result = byId('result')
@@ -235,12 +241,24 @@ async function submit() {
     }
 
     const data = payload.data
-    toast('已添加: ' + data.entry.title, 'ok')
+    const bump = data.versionBump
+    toast(bump ? '已添加: ' + data.entry.title + ',版本号更新为 ' + bump.to : '已添加: ' + data.entry.title, 'ok')
     showResult(
-      '添加成功,清单现有 ' + data.count + ' 条',
+      '添加成功,清单现有 ' + data.count + ' 条' + (bump ? ',版本号 ' + bump.from + ' 更新为 ' + bump.to : ''),
       JSON.stringify(data.entry, null, 2),
       'ok'
     )
+
+    /* 条目已落盘,封面捕获在后台进行,进度单独显示 */
+    const cover = data.cover || null
+    if (cover && cover.jobId) {
+      startCoverStream(cover.jobId, data.entry.filename)
+    } else if (cover && cover.error) {
+      showCoverPanel('封面未捕获: ' + data.entry.filename)
+      appendCoverLog('[add-new] ' + cover.error.message)
+      state.coverFilename = data.entry.filename
+      dom.coverRetry.hidden = false
+    }
   } catch (error) {
     toast('请求失败: ' + error.message, 'bad')
   } finally {
@@ -323,11 +341,105 @@ async function loadState() {
   }
 }
 
+/* 封面捕获面板: 进度按行追加,失败时露出重试按钮,结束后关闭订阅 */
+function showCoverPanel(title) {
+  dom.cover.hidden = false
+  dom.coverTitle.textContent = title
+}
+
+function appendCoverLog(line) {
+  dom.coverLog.textContent += line + '\n'
+  dom.coverLog.scrollTop = dom.coverLog.scrollHeight
+}
+
+function closeCoverStream() {
+  if (state.coverSource) {
+    state.coverSource.close()
+    state.coverSource = null
+  }
+}
+
+function startCoverStream(jobId, filename) {
+  closeCoverStream()
+  state.coverFilename = filename || ''
+  dom.coverLog.textContent = ''
+  dom.coverRetry.hidden = true
+  showCoverPanel('封面捕获中: ' + filename)
+
+  const source = new EventSource('/api/cover/stream?id=' + encodeURIComponent(jobId))
+  state.coverSource = source
+
+  source.onmessage = (event) => {
+    let payload = null
+    try {
+      payload = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    if (payload.type === 'log') {
+      appendCoverLog(payload.text)
+      return
+    }
+    if (payload.type === 'result') {
+      showCoverPanel((payload.ok ? '封面捕获完成: ' : '封面捕获失败: ') + filename)
+      appendCoverLog('[add-new] ' + (payload.message || ''))
+      if (payload.exitCode !== null && payload.exitCode !== undefined) {
+        appendCoverLog('[add-new] 退出码 ' + payload.exitCode)
+      }
+      if (!payload.ok) {
+        dom.coverRetry.hidden = false
+      }
+      return
+    }
+    if (payload.type === 'check') {
+      appendCoverLog('[add-new] 历史文件校验: ' + (payload.ok ? '通过' : payload.message))
+      return
+    }
+    if (payload.type === 'end') {
+      closeCoverStream()
+    }
+  }
+
+  source.onerror = () => {
+    closeCoverStream()
+    dom.coverRetry.hidden = false
+    appendCoverLog('[add-new] 进度连接已断开,任务可能仍在后台运行')
+  }
+}
+
+async function retryCover() {
+  const filename = state.coverFilename || (collectForm().filename || '').trim()
+  if (filename === '') {
+    toast('缺少文件名,无法重试', 'bad')
+    return
+  }
+  dom.coverRetry.hidden = true
+  try {
+    const payload = await requestJson('/api/cover', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename })
+    })
+    if (!payload.ok) {
+      toast(payload.error.message, 'bad')
+      showCoverPanel('封面捕获未启动: ' + filename)
+      appendCoverLog('[add-new] ' + payload.error.message)
+      dom.coverRetry.hidden = false
+      return
+    }
+    startCoverStream(payload.data.jobId, payload.data.filename)
+  } catch (error) {
+    toast('重试失败: ' + error.message, 'bad')
+    dom.coverRetry.hidden = false
+  }
+}
+
 function bindEvents() {
   dom.submit.addEventListener('click', submit)
   dom.reset.addEventListener('click', resetForm)
   dom.quit.addEventListener('click', quit)
   dom.resultDismiss.addEventListener('click', hideResult)
+  dom.coverRetry.addEventListener('click', retryCover)
   dom.sourceIdEnabled.addEventListener('change', () => {
     dom.sourceId.disabled = !dom.sourceIdEnabled.checked
     if (!dom.sourceIdEnabled.checked) {

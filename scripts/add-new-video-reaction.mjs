@@ -1,15 +1,16 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { copyFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { DEFAULT_MANIFEST, PROJECT_ROOT, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
+import { DEFAULT_MANIFEST, INLINE_ARG, PROJECT_ROOT, parseArgs, resolveSourcePaths } from './lib/cli.mjs'
 import { readJsonDocument, writeJsonDocument } from './lib/json-style.mjs'
 import { buildEntry } from './lib/manifest-entry.mjs'
 import { primaryHashId } from './lib/hash-id.mjs'
 import { conflictsOf, defaultHisPath, planHisUpdate, readHisDocument, writeHisDocument } from './lib/manifest-his.mjs'
 import { SIMILARITY_THRESHOLD, bestSimilarEntry } from './lib/similarity.mjs'
-import { readVersion } from './lib/version.mjs'
+import { advanceVersionForToday, readVersion, versionForToday } from './lib/version.mjs'
 import { runChildScript } from './lib/child.mjs'
 import { removeQuietly, replaceFile, tempFilePathFor } from './lib/fs-util.mjs'
 import { emitResult, makeError } from './lib/result.mjs'
@@ -24,6 +25,9 @@ const SCRIPT_DIR = dirname(SCRIPT_PATH)
 const GUI_DIR = join(SCRIPT_DIR, 'gui', 'add-video-reaction')
 const SORT_SCRIPT = join(SCRIPT_DIR, 'sort-video-manifest_tags.mjs')
 const CHECK_SCRIPT = join(SCRIPT_DIR, 'check-video-manifest.mjs')
+const SYNC_VERSION_SCRIPT = join(SCRIPT_DIR, 'sync-version.mjs')
+const COVER_SCRIPT = join(SCRIPT_DIR, 'catch-video-cover.mjs')
+const TRY2_SCRIPT = join(SCRIPT_DIR, 'try2-update-manifest-his.mjs')
 
 const STATIC_FILES = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -46,6 +50,8 @@ let tagsPath = ''
 let adding = false
 let finished = false
 let server = null
+let coverJob = null
+let coverJobSeq = 0
 
 function display(target) {
   return relative(PROJECT_ROOT, target) || '.'
@@ -169,7 +175,13 @@ async function performAdd(form) {
       }
     }
 
-    const version = await readVersion()
+    /*
+     * 登记日期取自版本号,先把版本号推进到当天再登记
+     * 否则先加视频后提版本时,新条目会被钉在上一个版本日期
+     */
+    const now = new Date()
+    const currentVersion = await readVersion()
+    const version = versionForToday(currentVersion, now)
     const hisDocument = await readHisDocument(hisPath)
     const planned = planHisUpdate(sortedDocument.value, hisDocument.value, { version, acceptNew: [hashId] })
     const conflicts = conflictsOf(planned.report)
@@ -179,6 +191,23 @@ async function performAdd(form) {
         error: makeError('历史文件存在 ' + conflicts.length + ' 处无法自动判定的冲突,请先运行 node scripts/merge-into-manifest-his.mjs 处理', 'conflict', { conflicts })
       }
     }
+    /* 版本号落后当天时先写 VERSION 再交给同步脚本,失败则把版本号还原,不留下半套结果 */
+    let versionBump = null
+    if (version !== currentVersion) {
+      try {
+        const advanced = await advanceVersionForToday({
+          now,
+          sync: () => runChildScript(SYNC_VERSION_SCRIPT, [])
+        })
+        versionBump = advanced.bump
+      } catch (error) {
+        return {
+          ok: false,
+          error: makeError(error.message, 'version', { from: currentVersion, to: version })
+        }
+      }
+    }
+
     await writeHisDocument(tempHis, planned.value)
 
     /* 排序脚本同时规范化了标签顺序,三份结果一起写回,避免清单,标签文件与历史文件互相不一致 */
@@ -192,7 +221,9 @@ async function performAdd(form) {
       data: {
         entry,
         manifest: display(manifestPath),
-        count: nextTotal.length
+        count: nextTotal.length,
+        version,
+        versionBump
       }
     }
   } catch (error) {
@@ -202,6 +233,165 @@ async function performAdd(form) {
       await removeQuietly(target)
     }
   }
+}
+
+/* ---- 封面捕获任务: 独立子进程逐行回传进度,与条目写入互不阻塞 ---- */
+
+/* 本地视频目录与清单文件同级,清单在 video/ 下,视频在 video/file/ 下 */
+function videoFileDir() {
+  return join(dirname(manifestPath), 'file')
+}
+
+/* 按行读取子进程输出,过滤空行,末行不带换行时也要交付 */
+function readLines(stream, onLine) {
+  let buffer = ''
+  stream.setEncoding('utf8')
+  stream.on('data', (chunk) => {
+    buffer += chunk
+    let index = buffer.indexOf('\n')
+    while (index !== -1) {
+      const line = buffer.slice(0, index).replace(/\r$/, '')
+      buffer = buffer.slice(index + 1)
+      if (line !== '') {
+        onLine(line)
+      }
+      index = buffer.indexOf('\n')
+    }
+  })
+  stream.on('end', () => {
+    const line = buffer.replace(/\r$/, '')
+    if (line !== '') {
+      onLine(line)
+    }
+  })
+}
+
+function pushCoverEvent(job, event) {
+  job.events.push(event)
+  for (const send of job.listeners) {
+    send(event)
+  }
+  if (event.type === 'end') {
+    job.finished = true
+    job.listeners.clear()
+  }
+}
+
+/* 封面捕获结束后只做只读校验,不在后台改写历史文件,避免与主流程争抢同一份数据 */
+function pushHisCheck(job) {
+  const checked = runChildScript(TRY2_SCRIPT, ['--check'])
+  if (checked.ok) {
+    pushCoverEvent(job, { type: 'check', ok: true, message: '历史文件与清单一致' })
+    return
+  }
+  const message = checked.error ? checked.error.message : '历史文件校验失败'
+  pushCoverEvent(job, { type: 'check', ok: false, message })
+}
+
+function startCoverJob(filename) {
+  const name = String(filename || '').trim()
+  if (name === '') {
+    return { ok: false, error: makeError('缺少文件名,无法定位本地视频', 'args') }
+  }
+  if (coverJob && !coverJob.finished) {
+    return { ok: false, error: makeError('上一个封面任务尚未结束,请等待其完成', 'busy', { filename: coverJob.filename }) }
+  }
+
+  const target = join(videoFileDir(), name)
+  if (!existsSync(target)) {
+    return {
+      ok: false,
+      error: makeError('本地视频文件不存在: ' + display(target) + ',请先把视频放到该目录再捕获封面', 'source', { file: display(target) })
+    }
+  }
+
+  const job = {
+    id: 'cover-' + (coverJobSeq += 1),
+    filename: name,
+    events: [],
+    listeners: new Set(),
+    finished: false,
+    child: null
+  }
+  coverJob = job
+  pushCoverEvent(job, { type: 'log', text: '[add-new] 开始为 ' + name + ' 捕获封面' })
+
+  /* 子脚本统一带 --inline,结果对象压成单行,便于按末行解析 */
+  const child = spawn(process.execPath, [COVER_SCRIPT, '--single', target, '--debug', INLINE_ARG], {
+    cwd: PROJECT_ROOT,
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
+  job.child = child
+
+  const resultLines = []
+  readLines(child.stdout, (line) => resultLines.push(line))
+  readLines(child.stderr, (line) => pushCoverEvent(job, { type: 'log', text: line }))
+
+  child.on('error', (error) => {
+    pushCoverEvent(job, { type: 'result', ok: false, exitCode: null, message: '封面脚本启动失败: ' + error.message })
+    pushCoverEvent(job, { type: 'check', ok: false, message: '封面未产出,跳过后置校验' })
+    pushCoverEvent(job, { type: 'end' })
+  })
+
+  child.on('close', (code) => {
+    let result = null
+    const last = resultLines.length > 0 ? resultLines[resultLines.length - 1] : ''
+    try {
+      result = JSON.parse(last)
+    } catch {
+      result = null
+    }
+    const ok = code === 0 && result !== null && result.ok === true
+    pushCoverEvent(job, {
+      type: 'result',
+      ok,
+      exitCode: code,
+      message: ok ? '封面已写入 video/cover/,重建站点后可在页面看到' : '封面捕获失败,可按提示重试',
+      result
+    })
+    pushHisCheck(job)
+    pushCoverEvent(job, { type: 'end' })
+  })
+
+  return { ok: true, data: { jobId: job.id, filename: name, file: display(target) } }
+}
+
+/* 结束服务时一并终止仍在运行的封面任务,避免子进程留在后台 */
+function stopCoverJob() {
+  if (coverJob && coverJob.child && !coverJob.finished) {
+    coverJob.child.kill()
+  }
+}
+
+/* 请求断开时只摘掉监听,任务本身继续跑完并写盘 */
+function attachCoverStream(job, response) {
+  response.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive'
+  })
+  const send = (event) => {
+    response.write('data: ' + JSON.stringify(event) + '\n\n')
+    if (event.type === 'end') {
+      response.end()
+    }
+  }
+  for (const event of job.events) {
+    send(event)
+  }
+  if (job.finished) {
+    response.end()
+    return
+  }
+  job.listeners.add(send)
+  if (job.finished) {
+    job.listeners.delete(send)
+    response.end()
+    return
+  }
+  response.on('close', () => {
+    job.listeners.delete(send)
+  })
 }
 
 async function handleRequest(request, response) {
@@ -238,12 +428,39 @@ async function handleRequest(request, response) {
     adding = true
     try {
       const form = await readJsonBody(request)
-      sendJson(response, 200, await performAdd(form))
+      const result = await performAdd(form)
+      if (result.ok) {
+        /* 条目落盘后立刻拉起封面任务,失败不影响已添加的条目 */
+        const started = startCoverJob(result.data.entry.filename)
+        result.data.cover = started.ok ? started.data : { error: started.error }
+      }
+      sendJson(response, 200, result)
     } catch (error) {
       sendJson(response, 500, { ok: false, error: makeError('添加过程异常: ' + error.message, 'add') })
     } finally {
       adding = false
     }
+    return
+  }
+
+  if (request.method === 'POST' && pathname === '/api/cover') {
+    try {
+      const body = await readJsonBody(request)
+      const started = startCoverJob(body && body.filename)
+      sendJson(response, started.ok ? 200 : 409, started)
+    } catch (error) {
+      sendJson(response, 500, { ok: false, error: makeError('封面任务启动失败: ' + error.message, 'cover') })
+    }
+    return
+  }
+
+  if (request.method === 'GET' && pathname === '/api/cover/stream') {
+    const id = url.searchParams.get('id') || ''
+    if (!coverJob || coverJob.id !== id) {
+      sendJson(response, 404, { ok: false, error: makeError('封面任务不存在: ' + id, 'cover') })
+      return
+    }
+    attachCoverStream(coverJob, response)
     return
   }
 
@@ -280,6 +497,7 @@ function finish() {
     return
   }
   finished = true
+  stopCoverJob()
   if (server) {
     server.closeAllConnections()
     server.close()
@@ -293,6 +511,7 @@ function interrupt() {
     return
   }
   finished = true
+  stopCoverJob()
   if (server) {
     server.closeAllConnections()
     server.close()
