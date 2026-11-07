@@ -54,6 +54,7 @@ function cacheDom() {
   dom.resultBody = byId('result-body')
   dom.sourceIdEnabled = byId('source_id_enabled')
   dom.sourceId = byId('source_id')
+  dom.coverLevel = byId('coverLevel')
 
   for (const field of FIELD_IDS) {
     dom[field] = byId(field)
@@ -131,7 +132,8 @@ function collectForm() {
     source: dom.source.value,
     source_id_enabled: dom.sourceIdEnabled.checked,
     source_id: dom.sourceId.value,
-    tags: [...dom.tags.querySelectorAll('input[type="checkbox"]')].filter(input => input.checked).map(input => input.value)
+    tags: [...dom.tags.querySelectorAll('input[type="checkbox"]')].filter(input => input.checked).map(input => input.value),
+    coverLevel: dom.coverLevel.value
   }
 }
 
@@ -418,7 +420,7 @@ async function retryCover() {
     const payload = await requestJson('/api/cover', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ filename })
+      body: JSON.stringify({ filename, level: dom.coverLevel.value })
     })
     if (!payload.ok) {
       toast(payload.error.message, 'bad')

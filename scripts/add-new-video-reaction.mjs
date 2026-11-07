@@ -29,6 +29,11 @@ const SYNC_VERSION_SCRIPT = join(SCRIPT_DIR, 'sync-version.mjs')
 const COVER_SCRIPT = join(SCRIPT_DIR, 'catch-video-cover.mjs')
 const TRY2_SCRIPT = join(SCRIPT_DIR, 'try2-update-manifest-his.mjs')
 
+/* 封面判定等级的取值区间与 catch-video-cover.mjs 的条件个数保持一致,缺省取最严格的一档 */
+const COVER_LEVEL_MIN = 1
+const COVER_LEVEL_MAX = 3
+const COVER_LEVEL_DEFAULT = 3
+
 const STATIC_FILES = new Map([
   ['/', ['index.html', 'text/html; charset=utf-8']],
   ['/index.html', ['index.html', 'text/html; charset=utf-8']],
@@ -288,7 +293,22 @@ function pushHisCheck(job) {
   pushCoverEvent(job, { type: 'check', ok: false, message })
 }
 
-function startCoverJob(filename) {
+/* 等级缺省取最严格的一档,取值越界视为参数错误,不静默降级 */
+function parseCoverLevel(value) {
+  if (value === undefined || value === null || value === '') {
+    return { level: COVER_LEVEL_DEFAULT }
+  }
+  const level = Number(value)
+  if (!Number.isInteger(level) || level < COVER_LEVEL_MIN || level > COVER_LEVEL_MAX) {
+    return {
+      level: COVER_LEVEL_DEFAULT,
+      error: makeError('封面等级只接受 ' + COVER_LEVEL_MIN + ' 到 ' + COVER_LEVEL_MAX + ': ' + value, 'args')
+    }
+  }
+  return { level }
+}
+
+function startCoverJob(filename, level = COVER_LEVEL_DEFAULT) {
   const name = String(filename || '').trim()
   if (name === '') {
     return { ok: false, error: makeError('缺少文件名,无法定位本地视频', 'args') }
@@ -308,16 +328,17 @@ function startCoverJob(filename) {
   const job = {
     id: 'cover-' + (coverJobSeq += 1),
     filename: name,
+    level,
     events: [],
     listeners: new Set(),
     finished: false,
     child: null
   }
   coverJob = job
-  pushCoverEvent(job, { type: 'log', text: '[add-new] 开始为 ' + name + ' 捕获封面' })
+  pushCoverEvent(job, { type: 'log', text: '[add-new] 开始为 ' + name + ' 捕获封面,等级 -O' + level })
 
   /* 子脚本统一带 --inline,结果对象压成单行,便于按末行解析 */
-  const child = spawn(process.execPath, [COVER_SCRIPT, '--single', target, '--debug', INLINE_ARG], {
+  const child = spawn(process.execPath, [COVER_SCRIPT, '--single', target, '-O' + level, '--debug', INLINE_ARG], {
     cwd: PROJECT_ROOT,
     stdio: ['ignore', 'pipe', 'pipe']
   })
@@ -428,10 +449,15 @@ async function handleRequest(request, response) {
     adding = true
     try {
       const form = await readJsonBody(request)
+      const parsedLevel = parseCoverLevel(form && form.coverLevel)
+      if (parsedLevel.error) {
+        sendJson(response, 400, { ok: false, error: parsedLevel.error })
+        return
+      }
       const result = await performAdd(form)
       if (result.ok) {
         /* 条目落盘后立刻拉起封面任务,失败不影响已添加的条目 */
-        const started = startCoverJob(result.data.entry.filename)
+        const started = startCoverJob(result.data.entry.filename, parsedLevel.level)
         result.data.cover = started.ok ? started.data : { error: started.error }
       }
       sendJson(response, 200, result)
@@ -446,7 +472,12 @@ async function handleRequest(request, response) {
   if (request.method === 'POST' && pathname === '/api/cover') {
     try {
       const body = await readJsonBody(request)
-      const started = startCoverJob(body && body.filename)
+      const parsedLevel = parseCoverLevel(body && body.level)
+      if (parsedLevel.error) {
+        sendJson(response, 400, { ok: false, error: parsedLevel.error })
+        return
+      }
+      const started = startCoverJob(body && body.filename, parsedLevel.level)
       sendJson(response, started.ok ? 200 : 409, started)
     } catch (error) {
       sendJson(response, 500, { ok: false, error: makeError('封面任务启动失败: ' + error.message, 'cover') })
