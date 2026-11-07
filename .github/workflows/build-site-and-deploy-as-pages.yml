@@ -25,6 +25,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 取两条提交,便于比对 hash_id 是否被批量改写
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -42,6 +45,31 @@ jobs:
 
       - name: Validate video manifest
         run: node scripts/check-video-manifest.mjs
+
+      - name: Check hash_id stability
+        run: |
+          node -e '
+          const { execSync } = require("node:child_process")
+          const fs = require("node:fs")
+          let previous = null
+          try {
+            previous = JSON.parse(execSync("git show HEAD~1:video/manifest.json", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }))
+          } catch (error) {
+            console.log("没有可比对的历史清单,跳过 hash_id 稳定性检查")
+            process.exit(0)
+          }
+          const current = JSON.parse(fs.readFileSync("video/manifest.json", "utf8"))
+          const before = new Map(previous.total.map(item => [item.filename, item.hash_id]))
+          const changed = current.total.filter(item => before.has(item.filename) && before.get(item.filename) !== item.hash_id)
+          if (changed.length === 0) {
+            console.log("hash_id 全部沿用,无批量变更")
+            process.exit(0)
+          }
+          for (const item of changed) {
+            console.log("::warning file=video/manifest.json::" + item.filename + " 的 hash_id 由 " + before.get(item.filename) + " 变为 " + item.hash_id + ",已分发的分享链接与已收录页面会失效")
+          }
+          console.log("共 " + changed.length + " 个条目的 hash_id 发生变化,确认是否为 sort 的 --force 造成")
+          '
 
       - name: Check manifest history
         run: node scripts/try2-update-manifest-his.mjs --check
