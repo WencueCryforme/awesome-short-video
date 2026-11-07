@@ -29,6 +29,9 @@ const SYNC_VERSION_SCRIPT = join(SCRIPT_DIR, 'sync-version.mjs')
 const COVER_SCRIPT = join(SCRIPT_DIR, 'catch-video-cover.mjs')
 const TRY2_SCRIPT = join(SCRIPT_DIR, 'try2-update-manifest-his.mjs')
 
+/* 封面文件后缀与 catch-video-cover.mjs 的配置区保持一致 */
+const COVER_EXTENSION = '.jpg'
+
 /* 封面判定等级的取值区间与 catch-video-cover.mjs 的条件个数保持一致,缺省取最严格的一档 */
 const COVER_LEVEL_MIN = 1
 const COVER_LEVEL_MAX = 3
@@ -93,11 +96,18 @@ async function describeState() {
   const tagsDocument = await readJsonDocument(tagsPath)
   const total = Array.isArray(manifestDocument.value.total) ? manifestDocument.value.total : []
 
+  const coverDir = join(dirname(manifestPath), 'cover')
   return {
     manifest: display(manifestPath),
     tagsFile: display(tagsPath),
     entryCount: total.length,
-    tags: Array.isArray(tagsDocument.value) ? tagsDocument.value : []
+    tags: Array.isArray(tagsDocument.value) ? tagsDocument.value : [],
+    /* 已有条目连同本地封面是否就绪一起回给页面,供补拍封面时挑选 */
+    entries: total.map(item => ({
+      filename: item.filename,
+      title: item.title,
+      hasCover: existsSync(join(coverDir, item.filename + COVER_EXTENSION))
+    }))
   }
 }
 

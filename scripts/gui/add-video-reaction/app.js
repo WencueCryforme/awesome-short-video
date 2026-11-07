@@ -55,6 +55,8 @@ function cacheDom() {
   dom.sourceIdEnabled = byId('source_id_enabled')
   dom.sourceId = byId('source_id')
   dom.coverLevel = byId('coverLevel')
+  dom.backfill = byId('backfill')
+  dom.backfillRun = byId('backfill-run')
 
   for (const field of FIELD_IDS) {
     dom[field] = byId(field)
@@ -100,6 +102,55 @@ function setFieldError(field, message) {
 function clearErrors() {
   for (const field of FIELD_IDS) {
     setFieldError(field, '')
+  }
+}
+
+/* 补拍下拉只随条目列表刷新,不动标签勾选与表单其他内容 */
+function renderEntries(entries) {
+  dom.backfill.textContent = ''
+  for (const item of entries) {
+    const option = document.createElement('option')
+    option.value = item.filename
+    option.textContent = item.title + ' · ' + item.filename + (item.hasCover ? '' : ' (缺封面)')
+    dom.backfill.appendChild(option)
+  }
+  dom.backfillRun.disabled = entries.length === 0
+}
+
+async function refreshEntries() {
+  try {
+    const payload = await requestJson('/api/state')
+    if (payload.ok) {
+      renderEntries(payload.data.entries || [])
+    }
+  } catch {
+    /* 列表刷新失败不影响主流程,下次打开页面会重新读取 */
+  }
+}
+
+async function backfillCover() {
+  const filename = dom.backfill.value
+  if (!filename) {
+    toast('请先选择要补拍的条目', 'bad')
+    return
+  }
+  dom.backfillRun.disabled = true
+  try {
+    const payload = await requestJson('/api/cover', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ filename, level: dom.coverLevel.value })
+    })
+    if (!payload.ok) {
+      toast(payload.error.message, 'bad')
+      return
+    }
+    toast('已开始补拍: ' + payload.data.filename, 'ok')
+    startCoverStream(payload.data.jobId, payload.data.filename)
+  } catch (error) {
+    toast('补拍失败: ' + error.message, 'bad')
+  } finally {
+    dom.backfillRun.disabled = false
   }
 }
 
@@ -252,6 +303,8 @@ async function submit() {
     )
 
     /* 条目已落盘,封面捕获在后台进行,进度单独显示 */
+    refreshEntries()
+
     const cover = data.cover || null
     if (cover && cover.jobId) {
       startCoverStream(cover.jobId, data.entry.filename)
@@ -334,6 +387,7 @@ async function loadState() {
     const data = payload.data
     state.tags = data.tags
     renderTags(data.tags)
+    renderEntries(data.entries || [])
     dom.metaCount.textContent = '清单 ' + data.entryCount + ' 条 / 标签 ' + data.tags.length + ' 个'
     dom.metaManifest.textContent = data.manifest
     dom.metaTags.textContent = data.tagsFile || '-'
@@ -384,6 +438,9 @@ function startCoverStream(jobId, filename) {
     }
     if (payload.type === 'result') {
       showCoverPanel((payload.ok ? '封面捕获完成: ' : '封面捕获失败: ') + filename)
+      if (payload.ok) {
+        refreshEntries()
+      }
       appendCoverLog('[add-new] ' + (payload.message || ''))
       if (payload.exitCode !== null && payload.exitCode !== undefined) {
         appendCoverLog('[add-new] 退出码 ' + payload.exitCode)
@@ -442,6 +499,7 @@ function bindEvents() {
   dom.quit.addEventListener('click', quit)
   dom.resultDismiss.addEventListener('click', hideResult)
   dom.coverRetry.addEventListener('click', retryCover)
+  dom.backfillRun.addEventListener('click', backfillCover)
   dom.sourceIdEnabled.addEventListener('change', () => {
     dom.sourceId.disabled = !dom.sourceIdEnabled.checked
     if (!dom.sourceIdEnabled.checked) {
